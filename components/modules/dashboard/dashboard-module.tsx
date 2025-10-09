@@ -68,8 +68,9 @@ export default function DashboardModule() {
       )}
 
       {!loading && (
-      {/* Alertas Críticas */}
-      {dashboardData.critical_products.length > 0 && (
+        <>
+          {/* Alertas Críticas */}
+          {dashboardData.critical_products.length > 0 && (
         <Alert className="border-red-200 bg-red-50">
           <AlertTriangle className="h-4 w-4 text-red-600" />
           <AlertTitle className="text-red-800">Productos con Stock Crítico</AlertTitle>
@@ -203,6 +204,7 @@ export default function DashboardModule() {
           </CardContent>
         </Card>
       </div>
+        </>
       )}
     </div>
   )

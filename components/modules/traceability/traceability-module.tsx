@@ -359,7 +359,8 @@ export default function TraceabilityModule() {
       )}
 
       {!loading && (
-      <Tabs defaultValue="guias" className="w-full">
+        <>
+          <Tabs defaultValue="guias" className="w-full">
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="guias">Guías de Despacho</TabsTrigger>
           <TabsTrigger value="kardex">Kardex</TabsTrigger>
@@ -638,6 +639,7 @@ export default function TraceabilityModule() {
         onSave={handleSaveKardex}
         editingKardex={editingItem}
       />
+        </>
       )}
     </div>
   )

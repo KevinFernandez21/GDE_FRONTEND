@@ -502,7 +502,8 @@ export default function ManagementModule() {
       )}
 
       {!loading && (
-      <Tabs defaultValue="costos" className="w-full">
+        <>
+          <Tabs defaultValue="costos" className="w-full">
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="costos">Costos</TabsTrigger>
           <TabsTrigger value="gastos">Gastos</TabsTrigger>
@@ -1064,6 +1065,7 @@ export default function ManagementModule() {
         onSave={handleSaveCapital}
         editingCapital={editingItem}
       />
+        </>
       )}
     </div>
   )
