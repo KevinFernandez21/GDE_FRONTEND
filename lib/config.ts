@@ -4,15 +4,19 @@
 
 // Get API configuration
 export const getApiConfig = () => {
-  // Use Vercel proxy in production, direct API in development
+  // In production (Vercel), use /api proxy that rewrites to backend
+  // In development, use direct backend URL
   const isProduction = process.env.NODE_ENV === 'production';
-  const apiUrl = isProduction
-    ? (typeof window !== 'undefined' ? window.location.origin : '')
-    : (process.env.NEXT_PUBLIC_API_URL || 'https://yummy-cymbre-orangecorp-43ef562b.koyeb.app');
 
-  const apiBaseUrl = isProduction
-    ? (typeof window !== 'undefined' ? `${window.location.origin}/api` : '/api')
-    : (process.env.NEXT_PUBLIC_API_BASE_URL || 'https://yummy-cymbre-orangecorp-43ef562b.koyeb.app/api/v1');
+  // Always use /api in browser (will be rewritten by next.config.mjs)
+  // This works both in development and production
+  const apiBaseUrl = typeof window !== 'undefined'
+    ? '/api'  // Browser: use proxy
+    : (process.env.NEXT_PUBLIC_API_BASE_URL || 'https://yummy-cymbre-orangecorp-43ef562b.koyeb.app/api/v1'); // Server: use direct URL
+
+  const apiUrl = typeof window !== 'undefined'
+    ? window.location.origin
+    : (process.env.NEXT_PUBLIC_API_URL || 'https://yummy-cymbre-orangecorp-43ef562b.koyeb.app');
 
   // Debug log
   console.log('API Configuration:', {
@@ -22,7 +26,8 @@ export const getApiConfig = () => {
     NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL,
     resolved_apiUrl: apiUrl,
     resolved_apiBaseUrl: apiBaseUrl,
-    usingProxy: isProduction
+    isBrowser: typeof window !== 'undefined',
+    usingProxy: typeof window !== 'undefined'
   });
 
   return {

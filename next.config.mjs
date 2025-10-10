@@ -14,8 +14,8 @@ const nextConfig = {
   
   // Environment variables
   env: {
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'https://local',
-    NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL || 'https://yummy-cymbre-orangecorp-43ef562b.koyeb.app/api/v1',
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/',
+    NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080/api/v1',
     NEXT_PUBLIC_APP_NAME: process.env.NEXT_PUBLIC_APP_NAME || 'GDE - Sistema de Gestión',
     NEXT_PUBLIC_APP_VERSION: process.env.NEXT_PUBLIC_APP_VERSION || '2.0.0',
   },
@@ -38,6 +38,18 @@ const nextConfig = {
             value: '1; mode=block',
           },
         ],
+      },
+    ];
+  },
+
+  // Rewrite /api/* to the backend API (for Vercel deployment)
+  async rewrites() {
+    const backendUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://yummy-cymbre-orangecorp-43ef562b.koyeb.app/api/v1';
+
+    return [
+      {
+        source: '/api/:path*',
+        destination: `${backendUrl}/:path*`,
       },
     ];
   },
