@@ -114,9 +114,12 @@ export default function InventoryModule() {
       })
 
       if (response.data) {
-        setProducts(response.data)
+        setProducts(Array.isArray(response.data) ? response.data : [])
       } else {
-        toast.error(response.error || "Error loading products")
+        setProducts([])
+        if (response.error) {
+          toast.error(response.error || "Error loading products")
+        }
       }
     } catch (error) {
       toast.error("Error connecting to server")
@@ -134,7 +137,10 @@ export default function InventoryModule() {
       })
 
       if (response.data) {
-        setImportHistory(response.data.items || [])
+        const items = response.data.items || response.data || []
+        setImportHistory(Array.isArray(items) ? items : [])
+      } else {
+        setImportHistory([])
       }
     } catch (error) {
       console.error("Load import history error:", error)
@@ -149,7 +155,10 @@ export default function InventoryModule() {
       })
 
       if (response.data) {
-        setAuditActivity(response.data.items || [])
+        const items = response.data.items || response.data || []
+        setAuditActivity(Array.isArray(items) ? items : [])
+      } else {
+        setAuditActivity([])
       }
     } catch (error) {
       console.error("Load audit activity error:", error)
@@ -345,11 +354,12 @@ export default function InventoryModule() {
 
   // Get stock metrics
   const stockMetrics = useMemo(() => {
-    const totalProducts = products.length
-    const totalStock = products.reduce((sum, product) => sum + product.current_stock, 0)
-    const lowStock = products.filter(product => product.current_stock <= product.min_stock).length
-    const outOfStock = products.filter(product => product.current_stock === 0).length
-    const categories = [...new Set(products.map(product => product.category).filter(Boolean))].length
+    const safeProducts = products || []
+    const totalProducts = safeProducts.length
+    const totalStock = safeProducts.reduce((sum, product) => sum + product.current_stock, 0)
+    const lowStock = safeProducts.filter(product => product.current_stock <= product.min_stock).length
+    const outOfStock = safeProducts.filter(product => product.current_stock === 0).length
+    const categories = [...new Set(safeProducts.map(product => product.category).filter(Boolean))].length
 
     return {
       totalProducts,
@@ -520,14 +530,14 @@ export default function InventoryModule() {
                           Loading products...
                         </TableCell>
                       </TableRow>
-                    ) : filteredProducts.length === 0 ? (
+                    ) : (filteredProducts || []).length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={8} className="text-center py-8">
                           No products found
                         </TableCell>
                       </TableRow>
                     ) : (
-                      filteredProducts.map((product) => (
+                      (filteredProducts || []).map((product) => (
                         <TableRow key={product.id}>
                           <TableCell className="font-medium">{product.code}</TableCell>
                           <TableCell>{product.name}</TableCell>
@@ -637,14 +647,14 @@ export default function InventoryModule() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {importHistory.length === 0 ? (
+                  {(importHistory || []).length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={8} className="text-center py-8">
                         No import history found
                       </TableCell>
                     </TableRow>
                   ) : (
-                    importHistory.map((import_) => (
+                    (importHistory || []).map((import_) => (
                       <TableRow key={import_.id}>
                         <TableCell className="font-medium">{import_.original_filename}</TableCell>
                         <TableCell>{import_.full_name || import_.username}</TableCell>
@@ -702,14 +712,14 @@ export default function InventoryModule() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {auditActivity.length === 0 ? (
+                  {(auditActivity || []).length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={4} className="text-center py-8">
                         No audit activity found
                       </TableCell>
                     </TableRow>
                   ) : (
-                    auditActivity.map((activity) => (
+                    (auditActivity || []).map((activity) => (
                       <TableRow key={activity.id}>
                         <TableCell>
                           <div className="flex items-center space-x-2">

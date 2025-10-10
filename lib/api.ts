@@ -58,7 +58,15 @@ class ApiClient {
     options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
     const url = `${this.baseUrl}${endpoint}`;
-    
+
+    // Reload token from localStorage in case it was updated
+    if (typeof window !== 'undefined') {
+      const storedToken = localStorage.getItem('gde_token');
+      if (storedToken) {
+        this.token = storedToken;
+      }
+    }
+
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
       ...options.headers,
@@ -77,6 +85,14 @@ class ApiClient {
       const data = await response.json();
 
       if (!response.ok) {
+        // Handle 401 Unauthorized - clear token and redirect to login
+        if (response.status === 401) {
+          this.clearToken();
+          if (typeof window !== 'undefined' && window.location.pathname !== '/') {
+            window.location.href = '/';
+          }
+        }
+
         // Handle FastAPI error response
         const errorMessage = data.detail || data.message || 'An error occurred';
         return {
@@ -86,9 +102,9 @@ class ApiClient {
 
       // Handle backend success response format
       if (data.status === 'success') {
-        return { 
+        return {
           data: data.data || data,
-          message: data.message 
+          message: data.message
         };
       }
 
