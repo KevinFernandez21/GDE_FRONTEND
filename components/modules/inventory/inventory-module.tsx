@@ -339,10 +339,16 @@ export default function InventoryModule() {
 
   // Filter products
   const filteredProducts = useMemo(() => {
+    if (!products || !Array.isArray(products)) {
+      return []
+    }
+
     return products.filter(product => {
+      if (!product) return false
+
       const matchesSearch = searchQuery === "" ||
-        product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        product.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (product.name && product.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (product.code && product.code.toLowerCase().includes(searchQuery.toLowerCase())) ||
         (product.description && product.description.toLowerCase().includes(searchQuery.toLowerCase()))
 
       const matchesCategory = categoryFilter === "" || product.category === categoryFilter
