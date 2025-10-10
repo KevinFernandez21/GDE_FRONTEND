@@ -17,10 +17,6 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Environment variables for build
-ENV NEXT_PUBLIC_API_URL=https://yummy-cymbre-orangecorp-43ef562b.koyeb.app
-ENV NEXT_PUBLIC_API_BASE_URL=https://yummy-cymbre-orangecorp-43ef562b.koyeb.app/api/v1
-
 # Build the application
 RUN corepack enable pnpm && pnpm build
 
