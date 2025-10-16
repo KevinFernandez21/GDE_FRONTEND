@@ -42,9 +42,15 @@ const nextConfig = {
     ];
   },
 
-  // Rewrite /api/* to the backend API (for Vercel deployment)
+  // Rewrite /api/* to the backend API
   async rewrites() {
-    const backendUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://yummy-cymbre-orangecorp-43ef562b.koyeb.app/api/v1';
+    // En Docker, el servidor Next.js usa INTERNAL_API_BASE_URL para conectarse al backend
+    // En desarrollo local o producción, usa NEXT_PUBLIC_API_BASE_URL
+    const backendUrl = process.env.INTERNAL_API_BASE_URL
+      || process.env.NEXT_PUBLIC_API_BASE_URL
+      || 'http://localhost:8080/api/v1';
+
+    console.log('[Next.js Rewrites] Backend URL:', backendUrl);
 
     return [
       {

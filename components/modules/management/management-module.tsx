@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Progress } from "@/components/ui/progress"
 import { Checkbox } from "@/components/ui/checkbox"
 import { toast } from "sonner"
+import { apiClient } from "@/lib/api"
 import BulkFinancialImportModal from "@/components/bulk-financial-import-modal"
 import CostModal from "@/components/modals/cost-modal"
 import ExpenseModal from "@/components/modals/expense-modal"
@@ -27,102 +28,42 @@ export default function ManagementModule() {
   const [showExpenseModal, setShowExpenseModal] = useState(false)
   const [showCapitalModal, setShowCapitalModal] = useState(false)
   const [editingItem, setEditingItem] = useState(null)
-  // Datos financieros de ejemplo
-  const initialFinancialData = {
-    costos: [
-      {
-        id: 1,
-        fecha: "2024-01-05",
-        categoria: "Costo de Ventas",
-        subcategoria: "Mercadería",
-        descripcion: "Compra productos electrónicos",
-        monto: 15000,
-        proveedor: "Dell Inc",
-        documento: "FC-001",
-        estado: "Aprobado",
-      },
-      {
-        id: 2,
-        fecha: "2024-01-04",
-        categoria: "Gastos Operativos",
-        subcategoria: "Transporte",
-        descripcion: "Flete mercadería importada",
-        monto: 2500,
-        proveedor: "Transportes ABC",
-        documento: "FC-002",
-        estado: "Pendiente",
-      },
-    ],
-    gastos: [
-      {
-        id: 1,
-        fecha: "2024-01-05",
-        categoria: "Gastos Administrativos",
-        subcategoria: "Servicios Básicos",
-        descripcion: "Electricidad oficina principal",
-        monto: 450,
-        proveedor: "Empresa Eléctrica",
-        documento: "FC-003",
-        estado: "Pagado",
-      },
-      {
-        id: 2,
-        fecha: "2024-01-04",
-        categoria: "Gastos de Ventas",
-        subcategoria: "Marketing",
-        descripcion: "Publicidad digital",
-        monto: 1200,
-        proveedor: "Agencia Digital",
-        documento: "FC-004",
-        estado: "Aprobado",
-      },
-    ],
-    capital: [
-      {
-        id: 1,
-        fecha: "2024-01-01",
-        tipo: "Aporte de Capital",
-        descripcion: "Aporte inicial socio A",
-        monto: 50000,
-        origen: "Socio A",
-        documento: "AC-001",
-        estado: "Registrado",
-      },
-      {
-        id: 2,
-        fecha: "2024-01-15",
-        tipo: "Préstamo Bancario",
-        descripcion: "Préstamo para capital de trabajo",
-        monto: 25000,
-        origen: "Banco Nacional",
-        documento: "PB-001",
-        estado: "Activo",
-      },
-    ],
-  }
 
   const [editingCell, setEditingCell] = useState<{rowId: number, field: string, tab: string} | null>(null)
   const [editValue, setEditValue] = useState("")
   const [selectedRows, setSelectedRows] = useState<{[key: string]: number[]}>({costos: [], gastos: [], capital: []})
   const [hasChanges, setHasChanges] = useState(false)
-  const [managementData, setManagementData] = useState({costos: [], gastos: [], capital: []})
+  const [managementData, setManagementData] = useState<{costos: any[], gastos: any[], capital: any[]}>({costos: [], gastos: [], capital: []})
+  const [kpiFinancieros, setKpiFinancieros] = useState<any>({
+    totalCostos: 0,
+    totalGastos: 0,
+    totalCapital: 0,
+    utilidadBruta: 0,
+    utilidadNeta: 0,
+    margenBruto: 0,
+    rotacionInventario: 0,
+    aporteSocios: 0,
+    prestamosActivos: 0,
+    ventasTotales: 0,
+    activosTotales: 0,
+    pasivosTotales: 0,
+    patrimonio: 0,
+    ratioEndeudamiento: 0,
+    costoPromedioPonderado: 0,
+    porcCostosVentas: 0,
+    porcGastosAdmin: 0,
+    porcUtilidadNeta: 0
+  })
   const [loading, setLoading] = useState(true)
 
   const fetchCosts = async () => {
     try {
-      const token = localStorage.getItem('auth_token')
-      if (!token) return
-
-      const response = await fetch('http://localhost:8000/api/v1/accounting/costs?page=1&size=50', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
+      const response = await apiClient.request('/accounting/costs?page=1&size=50', {
+        method: 'GET'
       })
 
-      if (response.ok) {
-        const result = await response.json()
-        return result.items || []
+      if (response.data) {
+        return response.data.items || response.data || []
       }
     } catch (error) {
       console.error('Error fetching costs:', error)
@@ -132,19 +73,12 @@ export default function ManagementModule() {
 
   const fetchExpenses = async () => {
     try {
-      const token = localStorage.getItem('auth_token')
-      if (!token) return
-
-      const response = await fetch('http://localhost:8000/api/v1/accounting/expenses?page=1&size=50', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
+      const response = await apiClient.request('/accounting/expenses?page=1&size=50', {
+        method: 'GET'
       })
 
-      if (response.ok) {
-        const result = await response.json()
-        return result.items || []
+      if (response.data) {
+        return response.data.items || response.data || []
       }
     } catch (error) {
       console.error('Error fetching expenses:', error)
@@ -154,19 +88,12 @@ export default function ManagementModule() {
 
   const fetchCapital = async () => {
     try {
-      const token = localStorage.getItem('auth_token')
-      if (!token) return
-
-      const response = await fetch('http://localhost:8000/api/v1/accounting/capital?page=1&size=50', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
+      const response = await apiClient.request('/accounting/capital?page=1&size=50', {
+        method: 'GET'
       })
 
-      if (response.ok) {
-        const result = await response.json()
-        return result.items || []
+      if (response.data) {
+        return response.data.items || response.data || []
       }
     } catch (error) {
       console.error('Error fetching capital:', error)
@@ -174,13 +101,29 @@ export default function ManagementModule() {
     return []
   }
 
+  const fetchKPIs = async () => {
+    try {
+      const response = await apiClient.request('/accounting/kpis', {
+        method: 'GET'
+      })
+
+      if (response.data) {
+        return response.data
+      }
+    } catch (error) {
+      console.error('Error fetching KPIs:', error)
+    }
+    return null
+  }
+
   const fetchManagementData = async () => {
     setLoading(true)
     try {
-      const [costos, gastos, capital] = await Promise.all([
+      const [costos, gastos, capital, kpis] = await Promise.all([
         fetchCosts(),
         fetchExpenses(),
-        fetchCapital()
+        fetchCapital(),
+        fetchKPIs()
       ])
 
       setManagementData({
@@ -188,6 +131,10 @@ export default function ManagementModule() {
         gastos,
         capital
       })
+
+      if (kpis) {
+        setKpiFinancieros(kpis)
+      }
     } catch (error) {
       console.error('Error fetching management data:', error)
       toast.error('Error al cargar datos de gestión')
@@ -484,15 +431,6 @@ export default function ManagementModule() {
     )
   }, [editingCell, editValue, selectedRows, handleCellClick, handleCellSave, handleCellCancel])
 
-  const kpiFinancieros = {
-    totalCostos: 17500,
-    totalGastos: 1650,
-    totalCapital: 75000,
-    utilidadBruta: 45000,
-    margenBruto: 72.0,
-    rotacionInventario: 4.2,
-  }
-
   return (
     <div className="p-6 space-y-6">
       {loading && (
@@ -549,15 +487,15 @@ export default function ManagementModule() {
           <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between bg-blue-50 p-4 rounded-lg border border-blue-200">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
-                <Checkbox 
-                  checked={selectedRows.costos.length === managementData.costos.length && managementData.costos.length > 0}
+                <Checkbox
+                  checked={(selectedRows.costos?.length || 0) === (managementData.costos?.length || 0) && (managementData.costos?.length || 0) > 0}
                   onCheckedChange={() => handleSelectAll('costos')}
                 />
                 <span className="text-sm font-medium">
-                  {selectedRows.costos.length > 0 ? `${selectedRows.costos.length} seleccionadas` : "Seleccionar todo"}
+                  {(selectedRows.costos?.length || 0) > 0 ? `${selectedRows.costos.length} seleccionadas` : "Seleccionar todo"}
                 </span>
               </div>
-              {selectedRows.costos.length > 0 && (
+              {(selectedRows.costos?.length || 0) > 0 && (
                 <Button variant="destructive" size="sm" onClick={() => handleDeleteRows('costos')}>
                   <Trash2 className="w-4 h-4 mr-2" />
                   Eliminar Seleccionadas
@@ -596,7 +534,7 @@ export default function ManagementModule() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-blue-800">Costo Promedio Ponderado</p>
-                    <p className="text-2xl font-bold text-blue-600">$14.50</p>
+                    <p className="text-2xl font-bold text-blue-600">${kpiFinancieros.costo_promedio_ponderado.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
                   </div>
                   <BarChart3 className="w-8 h-8 text-blue-600" />
                 </div>
@@ -637,12 +575,12 @@ export default function ManagementModule() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {managementData.costos.map((costo) => {
+                  {(managementData.costos || []).map((costo) => {
                     const isSelected = selectedRows.costos?.includes(costo.id)
                     return (
                       <TableRow key={costo.id} className={isSelected ? 'bg-blue-50' : ''}>
                         <TableCell>
-                          <Checkbox 
+                          <Checkbox
                             checked={isSelected}
                             onCheckedChange={() => handleSelectRow(costo.id, 'costos')}
                           />
@@ -698,15 +636,15 @@ export default function ManagementModule() {
           <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between bg-blue-50 p-4 rounded-lg border border-blue-200">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
-                <Checkbox 
-                  checked={selectedRows.gastos.length === managementData.gastos.length && managementData.gastos.length > 0}
+                <Checkbox
+                  checked={(selectedRows.gastos?.length || 0) === (managementData.gastos?.length || 0) && (managementData.gastos?.length || 0) > 0}
                   onCheckedChange={() => handleSelectAll('gastos')}
                 />
                 <span className="text-sm font-medium">
-                  {selectedRows.gastos.length > 0 ? `${selectedRows.gastos.length} seleccionadas` : "Seleccionar todo"}
+                  {(selectedRows.gastos?.length || 0) > 0 ? `${selectedRows.gastos.length} seleccionadas` : "Seleccionar todo"}
                 </span>
               </div>
-              {selectedRows.gastos.length > 0 && (
+              {(selectedRows.gastos?.length || 0) > 0 && (
                 <Button variant="destructive" size="sm" onClick={() => handleDeleteRows('gastos')}>
                   <Trash2 className="w-4 h-4 mr-2" />
                   Eliminar Seleccionadas
@@ -747,12 +685,12 @@ export default function ManagementModule() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {managementData.gastos.map((gasto) => {
+                  {(managementData.gastos || []).map((gasto) => {
                     const isSelected = selectedRows.gastos?.includes(gasto.id)
                     return (
                       <TableRow key={gasto.id} className={isSelected ? 'bg-blue-50' : ''}>
                         <TableCell>
-                          <Checkbox 
+                          <Checkbox
                             checked={isSelected}
                             onCheckedChange={() => handleSelectRow(gasto.id, 'gastos')}
                           />
@@ -806,11 +744,11 @@ export default function ManagementModule() {
                 </div>
                 <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
                   <span className="font-medium">Aportes de Socios</span>
-                  <span className="text-xl font-bold text-blue-600">$50,000</span>
+                  <span className="text-xl font-bold text-blue-600">${kpiFinancieros.aporteSocios.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between items-center p-3 bg-orange-50 rounded-lg">
                   <span className="font-medium">Préstamos Activos</span>
-                  <span className="text-xl font-bold text-orange-600">$25,000</span>
+                  <span className="text-xl font-bold text-orange-600">${kpiFinancieros.prestamosActivos.toLocaleString()}</span>
                 </div>
               </CardContent>
             </Card>
@@ -823,19 +761,19 @@ export default function ManagementModule() {
                 <div className="space-y-2">
                   <div className="flex justify-between">
                     <span>Activos Totales</span>
-                    <span className="font-bold">$125,000</span>
+                    <span className="font-bold">${kpiFinancieros.activosTotales.toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Pasivos Totales</span>
-                    <span className="font-bold">$50,000</span>
+                    <span className="font-bold">${kpiFinancieros.pasivosTotales.toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between border-t pt-2">
                     <span className="font-bold">Patrimonio</span>
-                    <span className="font-bold text-green-600">$75,000</span>
+                    <span className="font-bold text-green-600">${kpiFinancieros.patrimonio.toLocaleString()}</span>
                   </div>
                 </div>
-                <Progress value={60} className="mt-4" />
-                <p className="text-sm text-muted-foreground">Ratio de Endeudamiento: 40%</p>
+                <Progress value={kpiFinancieros.ratioEndeudamiento} className="mt-4" />
+                <p className="text-sm text-muted-foreground">Ratio de Endeudamiento: {kpiFinancieros.ratioEndeudamiento.toFixed(1)}%</p>
               </CardContent>
             </Card>
           </div>
@@ -844,15 +782,15 @@ export default function ManagementModule() {
           <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between bg-blue-50 p-4 rounded-lg border border-blue-200">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
-                <Checkbox 
-                  checked={selectedRows.capital.length === managementData.capital.length && managementData.capital.length > 0}
+                <Checkbox
+                  checked={(selectedRows.capital?.length || 0) === (managementData.capital?.length || 0) && (managementData.capital?.length || 0) > 0}
                   onCheckedChange={() => handleSelectAll('capital')}
                 />
                 <span className="text-sm font-medium">
-                  {selectedRows.capital.length > 0 ? `${selectedRows.capital.length} seleccionadas` : "Seleccionar todo"}
+                  {(selectedRows.capital?.length || 0) > 0 ? `${selectedRows.capital.length} seleccionadas` : "Seleccionar todo"}
                 </span>
               </div>
-              {selectedRows.capital.length > 0 && (
+              {(selectedRows.capital?.length || 0) > 0 && (
                 <Button variant="destructive" size="sm" onClick={() => handleDeleteRows('capital')}>
                   <Trash2 className="w-4 h-4 mr-2" />
                   Eliminar Seleccionadas
@@ -893,12 +831,12 @@ export default function ManagementModule() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {managementData.capital.map((capital) => {
+                  {(managementData.capital || []).map((capital) => {
                     const isSelected = selectedRows.capital?.includes(capital.id)
                     return (
                       <TableRow key={capital.id} className={isSelected ? 'bg-blue-50' : ''}>
                         <TableCell>
-                          <Checkbox 
+                          <Checkbox
                             checked={isSelected}
                             onCheckedChange={() => handleSelectRow(capital.id, 'capital')}
                           />
@@ -974,23 +912,23 @@ export default function ManagementModule() {
               <CardContent className="space-y-3">
                 <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
                   <span className="font-medium">Ventas Totales</span>
-                  <span className="font-bold text-green-600">$62,500</span>
+                  <span className="font-bold text-green-600">${kpiFinancieros.ventasTotales.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between items-center p-3 bg-red-50 rounded-lg">
                   <span className="font-medium">Costo de Ventas</span>
-                  <span className="font-bold text-red-600">-$17,500</span>
+                  <span className="font-bold text-red-600">-${kpiFinancieros.totalCostos.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
                   <span className="font-medium">Utilidad Bruta</span>
-                  <span className="font-bold text-blue-600">$45,000</span>
+                  <span className="font-bold text-blue-600">${kpiFinancieros.utilidadBruta.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between items-center p-3 bg-orange-50 rounded-lg">
                   <span className="font-medium">Gastos Operativos</span>
-                  <span className="font-bold text-orange-600">-$1,650</span>
+                  <span className="font-bold text-orange-600">-${kpiFinancieros.totalGastos.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between items-center p-3 bg-purple-50 rounded-lg border-2 border-purple-200">
                   <span className="font-bold">Utilidad Neta</span>
-                  <span className="font-bold text-purple-600 text-xl">$43,350</span>
+                  <span className="font-bold text-purple-600 text-xl">${(kpiFinancieros.utilidadBruta - kpiFinancieros.totalGastos).toLocaleString()}</span>
                 </div>
               </CardContent>
             </Card>
@@ -1003,23 +941,23 @@ export default function ManagementModule() {
                 <div>
                   <div className="flex justify-between mb-2">
                     <span>Costo de Ventas</span>
-                    <span>28%</span>
+                    <span>{kpiFinancieros.porc_costos_ventas.toFixed(1)}%</span>
                   </div>
-                  <Progress value={28} />
+                  <Progress value={kpiFinancieros.porc_costos_ventas} />
                 </div>
                 <div>
                   <div className="flex justify-between mb-2">
                     <span>Gastos Administrativos</span>
-                    <span>2.6%</span>
+                    <span>{kpiFinancieros.porc_gastos_admin.toFixed(1)}%</span>
                   </div>
-                  <Progress value={2.6} />
+                  <Progress value={kpiFinancieros.porc_gastos_admin} />
                 </div>
                 <div>
                   <div className="flex justify-between mb-2">
                     <span>Utilidad Neta</span>
-                    <span>69.4%</span>
+                    <span>{kpiFinancieros.porc_utilidad_neta.toFixed(1)}%</span>
                   </div>
-                  <Progress value={69.4} />
+                  <Progress value={Math.max(0, kpiFinancieros.porc_utilidad_neta)} />
                 </div>
               </CardContent>
             </Card>

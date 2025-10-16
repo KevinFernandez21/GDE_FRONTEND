@@ -1,7 +1,21 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { QrCode, Scan, Play, Pause, Square, Eye, Download, RefreshCw } from "lucide-react"
+import {
+  QrCode,
+  Scan,
+  Play,
+  Pause,
+  Square,
+  Eye,
+  Download,
+  RefreshCw,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  BarChart3,
+  Activity
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -10,7 +24,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Progress } from "@/components/ui/progress"
 import { toast } from "sonner"
 
 interface ScanSession {
@@ -39,6 +54,12 @@ interface BarcodeScan {
   processed: boolean
   guide_info: any
   product_info: any
+  // Guide Master comparison results
+  found_in_master?: boolean
+  is_duplicate?: boolean
+  is_unknown?: boolean
+  master_status?: "scanned" | "pending" | "unknown" | "in_transit" | "delivered"
+  scans_count?: number
 }
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
@@ -57,8 +78,14 @@ export default function ScanningInterface() {
   const [scanLocation, setScanLocation] = useState("")
   const [scanNotes, setScanNotes] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [lastScanResult, setLastScanResult] = useState<{
+    type: "success" | "warning" | "error"
+    message: string
+    details?: string
+  } | null>(null)
 
   const qrRef = useRef<HTMLDivElement>(null)
+  const barcodeInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     loadActiveSessions()
@@ -216,6 +243,7 @@ export default function ScanningInterface() {
         return
       }
 
+      // First, process the scan normally
       const response = await fetch(`${API_BASE_URL}/api/v1/scanning/scan`, {
         method: 'POST',
         headers: {
@@ -233,7 +261,40 @@ export default function ScanningInterface() {
 
       if (response.ok) {
         const scanResult = await response.json()
-        setScanHistory(prev => [scanResult, ...prev])
+
+        // If it's a guide, also process it through guide master comparison
+        let masterComparison = null
+        if (scanType === 'guide') {
+          try {
+            const masterResponse = await fetch(`${API_BASE_URL}/api/v1/guide-master/process-scan?barcode=${encodeURIComponent(manualBarcode)}&session_id=${currentSession.id}&location=${encodeURIComponent(scanLocation || '')}&notes=${encodeURIComponent(scanNotes || '')}`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+              }
+            })
+
+            if (masterResponse.ok) {
+              const masterResult = await masterResponse.json()
+              masterComparison = masterResult.data
+            }
+          } catch (masterError) {
+            console.error('Error comparing with master list:', masterError)
+            // Continue even if master comparison fails
+          }
+        }
+
+        // Merge scan result with master comparison
+        const enrichedScanResult = {
+          ...scanResult,
+          found_in_master: masterComparison?.found_in_master,
+          is_duplicate: masterComparison?.is_duplicate,
+          is_unknown: masterComparison?.is_unknown,
+          master_status: masterComparison?.status,
+          scans_count: masterComparison?.scans_count
+        }
+
+        setScanHistory(prev => [enrichedScanResult, ...prev])
         setManualBarcode("")
         setScanLocation("")
         setScanNotes("")
@@ -245,7 +306,52 @@ export default function ScanningInterface() {
           last_scan_at: scanResult.scanned_at
         } : null)
 
-        toast.success(`${scanType === 'guide' ? 'Guía' : 'Producto'} escaneado correctamente`)
+        // Set last scan result for visual feedback
+        if (scanType === 'guide' && masterComparison) {
+          if (masterComparison.is_unknown) {
+            setLastScanResult({
+              type: "error",
+              message: "⚠️ Guía NO encontrada en lista maestra",
+              details: `Código: ${manualBarcode} - Esta guía no está registrada en el sistema`
+            })
+            toast.error(`⚠️ Guía NO encontrada en la lista maestra: ${manualBarcode}`, {
+              duration: 5000,
+              description: 'Esta guía no está registrada en el sistema'
+            })
+          } else if (masterComparison.is_duplicate) {
+            setLastScanResult({
+              type: "warning",
+              message: `🔄 Guía duplicada (${masterComparison.scans_count} escaneos)`,
+              details: `Código: ${manualBarcode} - Ya fue escaneada anteriormente`
+            })
+            toast.warning(`🔄 Guía ya escaneada anteriormente (${masterComparison.scans_count} veces)`, {
+              duration: 4000,
+              description: `Código: ${manualBarcode}`
+            })
+          } else {
+            setLastScanResult({
+              type: "success",
+              message: "✅ Guía verificada exitosamente",
+              details: `Código: ${manualBarcode} - Encontrada en lista maestra`
+            })
+            toast.success(`✅ Guía encontrada en lista maestra y registrada`, {
+              duration: 3000,
+              description: `Código: ${manualBarcode}`
+            })
+          }
+        } else {
+          setLastScanResult({
+            type: "success",
+            message: `✅ ${scanType === 'guide' ? 'Guía' : 'Producto'} escaneado`,
+            details: `Código: ${manualBarcode}`
+          })
+          toast.success(`${scanType === 'guide' ? 'Guía' : 'Producto'} escaneado correctamente`)
+        }
+
+        // Auto-focus back to input for rapid scanning
+        setTimeout(() => {
+          barcodeInputRef.current?.focus()
+        }, 100)
       } else {
         const error = await response.json()
         toast.error(`Error: ${error.detail}`)
@@ -423,10 +529,149 @@ export default function ScanningInterface() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Guide Master Statistics - Enhanced Version */}
+            {scanHistory.some(s => s.scan_type === 'guide' && (s.found_in_master !== undefined)) && (
+              <div className="space-y-3">
+                <Alert className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border-blue-300">
+                  <Activity className="h-5 w-5 text-blue-600" />
+                  <AlertTitle className="text-blue-900 dark:text-blue-100 font-semibold">
+                    Comparación Automática con Lista Maestra - Activa
+                  </AlertTitle>
+                  <AlertDescription>
+                    <div className="mt-3 space-y-3">
+                      {/* Statistics Grid */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        {/* Verified Guides */}
+                        <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border-2 border-green-200 dark:border-green-800">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <CheckCircle2 className="h-5 w-5 text-green-600" />
+                              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Verificadas</span>
+                            </div>
+                            <span className="text-2xl font-bold text-green-600">
+                              {scanHistory.filter(s => s.found_in_master === true && !s.is_duplicate).length}
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            Encontradas en lista maestra
+                          </p>
+                        </div>
+
+                        {/* Duplicate Guides */}
+                        <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border-2 border-yellow-200 dark:border-yellow-800">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <RefreshCw className="h-5 w-5 text-yellow-600" />
+                              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Duplicadas</span>
+                            </div>
+                            <span className="text-2xl font-bold text-yellow-600">
+                              {scanHistory.filter(s => s.is_duplicate === true).length}
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            Escaneadas múltiples veces
+                          </p>
+                        </div>
+
+                        {/* Unknown Guides */}
+                        <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border-2 border-red-200 dark:border-red-800">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <XCircle className="h-5 w-5 text-red-600" />
+                              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Desconocidas</span>
+                            </div>
+                            <span className="text-2xl font-bold text-red-600">
+                              {scanHistory.filter(s => s.is_unknown === true).length}
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            No están en lista maestra
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Progress Bar */}
+                      {(() => {
+                        const totalGuideScans = scanHistory.filter(s => s.scan_type === 'guide' && s.found_in_master !== undefined).length
+                        const verifiedScans = scanHistory.filter(s => s.found_in_master === true).length
+                        const successRate = totalGuideScans > 0 ? (verifiedScans / totalGuideScans) * 100 : 0
+
+                        return (
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="font-medium text-gray-700 dark:text-gray-300">
+                                Tasa de Verificación
+                              </span>
+                              <span className="font-bold text-blue-600">
+                                {successRate.toFixed(1)}% ({verifiedScans}/{totalGuideScans})
+                              </span>
+                            </div>
+                            <Progress value={successRate} className="h-2" />
+                          </div>
+                        )
+                      })()}
+
+                      {/* Warning for unknown guides */}
+                      {scanHistory.filter(s => s.is_unknown === true).length > 0 && (
+                        <div className="flex items-center gap-2 p-2 bg-red-100 dark:bg-red-900/20 rounded-md">
+                          <AlertTriangle className="h-4 w-4 text-red-600 flex-shrink-0" />
+                          <p className="text-xs text-red-800 dark:text-red-200">
+                            Atención: Se detectaron guías que no están en la lista maestra. Revisar inmediatamente.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </AlertDescription>
+                </Alert>
+              </div>
+            )}
+
+            {/* Last Scan Result - Immediate Visual Feedback */}
+            {lastScanResult && (
+              <Alert
+                className={
+                  lastScanResult.type === "success"
+                    ? "bg-green-50 dark:bg-green-950/20 border-green-300 dark:border-green-800"
+                    : lastScanResult.type === "warning"
+                    ? "bg-yellow-50 dark:bg-yellow-950/20 border-yellow-300 dark:border-yellow-800"
+                    : "bg-red-50 dark:bg-red-950/20 border-red-300 dark:border-red-800"
+                }
+              >
+                {lastScanResult.type === "success" ? (
+                  <CheckCircle2 className="h-5 w-5 text-green-600" />
+                ) : lastScanResult.type === "warning" ? (
+                  <AlertTriangle className="h-5 w-5 text-yellow-600" />
+                ) : (
+                  <XCircle className="h-5 w-5 text-red-600" />
+                )}
+                <AlertTitle className={
+                  lastScanResult.type === "success"
+                    ? "text-green-900 dark:text-green-100"
+                    : lastScanResult.type === "warning"
+                    ? "text-yellow-900 dark:text-yellow-100"
+                    : "text-red-900 dark:text-red-100"
+                }>
+                  {lastScanResult.message}
+                </AlertTitle>
+                {lastScanResult.details && (
+                  <AlertDescription className={
+                    lastScanResult.type === "success"
+                      ? "text-green-800 dark:text-green-200"
+                      : lastScanResult.type === "warning"
+                      ? "text-yellow-800 dark:text-yellow-200"
+                      : "text-red-800 dark:text-red-200"
+                  }>
+                    {lastScanResult.details}
+                  </AlertDescription>
+                )}
+              </Alert>
+            )}
+
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Código de Barras</label>
                 <Input
+                  ref={barcodeInputRef}
                   placeholder="Escanea o ingresa el código..."
                   value={manualBarcode}
                   onChange={(e) => setManualBarcode(e.target.value)}
@@ -435,6 +680,8 @@ export default function ScanningInterface() {
                       scanBarcode()
                     }
                   }}
+                  className="font-mono"
+                  autoFocus
                 />
               </div>
               <div className="space-y-2">
@@ -494,12 +741,18 @@ export default function ScanningInterface() {
                   <TableHead>Tipo</TableHead>
                   <TableHead>Ubicación</TableHead>
                   <TableHead>Estado</TableHead>
+                  <TableHead>Verificación</TableHead>
                   <TableHead>Notas</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {scanHistory.slice(0, 10).map((scan) => (
-                  <TableRow key={scan.id}>
+                  <TableRow
+                    key={scan.id}
+                    className={scan.is_unknown ? 'bg-red-50 dark:bg-red-950/20 border-l-4 border-l-red-500' :
+                               scan.is_duplicate ? 'bg-yellow-50 dark:bg-yellow-950/20 border-l-4 border-l-yellow-500' :
+                               scan.found_in_master ? 'bg-green-50 dark:bg-green-950/20 border-l-4 border-l-green-500' : ''}
+                  >
                     <TableCell className="font-mono text-xs">
                       {formatDateTime(scan.scanned_at)}
                     </TableCell>
@@ -515,6 +768,33 @@ export default function ScanningInterface() {
                       <Badge variant={scan.processed ? "default" : "secondary"}>
                         {scan.processed ? 'Procesado' : 'Pendiente'}
                       </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {scan.scan_type === 'guide' ? (
+                        scan.is_unknown ? (
+                          <div className="flex items-center gap-1">
+                            <Badge variant="destructive" className="text-xs">
+                              ⚠️ Desconocida
+                            </Badge>
+                          </div>
+                        ) : scan.is_duplicate ? (
+                          <div className="flex items-center gap-1">
+                            <Badge variant="secondary" className="text-xs bg-yellow-500 text-white">
+                              🔄 Duplicada ({scan.scans_count}x)
+                            </Badge>
+                          </div>
+                        ) : scan.found_in_master ? (
+                          <div className="flex items-center gap-1">
+                            <Badge variant="default" className="text-xs bg-green-600">
+                              ✅ En Lista Maestra
+                            </Badge>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">-</span>
+                        )
+                      ) : (
+                        <span className="text-xs text-muted-foreground">N/A</span>
+                      )}
                     </TableCell>
                     <TableCell className="max-w-[200px] truncate">
                       {scan.notes || '-'}

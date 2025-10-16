@@ -1,6 +1,6 @@
 "use client"
 
-import { Search, Plus, Eye, Edit, Download, Upload, Check, X, Save, Trash2, RowsIcon, QrCode, Scan } from "lucide-react"
+import { Search, Plus, Eye, Edit, Download, Upload, Check, X, Save, Trash2, RowsIcon, QrCode, Scan, FileUp, BarChart3, AlertCircle, CheckCircle2, Clock, Package } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -9,17 +9,34 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Progress } from "@/components/ui/progress"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import BulkImportModal from "@/components/bulk-import-modal"
 import BulkGuideImportModal from "@/components/bulk-guide-import-modal"
 import ScanningInterface from "@/components/scanning-interface"
 import GuideModal from "@/components/modals/guide-modal"
 import KardexModal from "@/components/modals/kardex-modal"
+import GuideMasterUpload from "@/components/guide-master-upload"
 import { useState, useCallback, useEffect } from "react"
 import { toast } from "sonner"
+
+interface TrackingSummary {
+  batch_id: string
+  batch_name: string
+  import_date: string
+  total_guides: number
+  guides_scanned: number
+  guides_pending: number
+  guides_in_transit: number
+  guides_unknown: number
+  guides_duplicate: number
+  completion_percentage: number
+}
 
 export default function TraceabilityModule() {
   const [showImportModal, setShowImportModal] = useState(false)
   const [showGuideImportModal, setShowGuideImportModal] = useState(false)
+  const [showGuideMasterUpload, setShowGuideMasterUpload] = useState(false)
 
   // New modals state
   const [showGuideModal, setShowGuideModal] = useState(false)
@@ -30,6 +47,13 @@ export default function TraceabilityModule() {
   const [selectedRows, setSelectedRows] = useState<{[key: string]: number[]}>({guias: [], kardex: []})
   const [hasChanges, setHasChanges] = useState(false)
   const [loading, setLoading] = useState(true)
+
+  // Guide Master state
+  const [trackingSummary, setTrackingSummary] = useState<TrackingSummary | null>(null)
+  const [importBatches, setImportBatches] = useState<any[]>([])
+  const [selectedBatch, setSelectedBatch] = useState<string | null>(null)
+  const [pendingGuides, setPendingGuides] = useState<any[]>([])
+  const [unknownGuides, setUnknownGuides] = useState<any[]>([])
 
   const fetchGuiasDespacho = async () => {
     try {
@@ -87,18 +111,86 @@ export default function TraceabilityModule() {
     }
   }
 
+  const fetchGuideMasterData = async () => {
+    try {
+      const token = localStorage.getItem('auth_token')
+      if (!token) return
+
+      // Fetch tracking summary
+      const summaryResponse = await fetch('http://localhost:8000/api/v1/guide-master/tracking-summary', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+
+      if (summaryResponse.ok) {
+        const summaryResult = await summaryResponse.json()
+        setTrackingSummary(summaryResult.data)
+      }
+
+      // Fetch import batches
+      const batchesResponse = await fetch('http://localhost:8000/api/v1/guide-master/batches?limit=10', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+
+      if (batchesResponse.ok) {
+        const batchesResult = await batchesResponse.json()
+        setImportBatches(batchesResult.data || [])
+      }
+
+      // Fetch pending guides
+      const pendingResponse = await fetch('http://localhost:8000/api/v1/guide-master/pending-guides?limit=50', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+
+      if (pendingResponse.ok) {
+        const pendingResult = await pendingResponse.json()
+        setPendingGuides(pendingResult.data || [])
+      }
+
+      // Fetch unknown guides
+      const unknownResponse = await fetch('http://localhost:8000/api/v1/guide-master/unknown-guides?limit=20', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+
+      if (unknownResponse.ok) {
+        const unknownResult = await unknownResponse.json()
+        setUnknownGuides(unknownResult.data || [])
+      }
+
+    } catch (error) {
+      console.error('Error fetching guide master data:', error)
+    }
+  }
+
   const fetchTraceabilityData = async () => {
     setLoading(true)
-    await Promise.all([fetchGuiasDespacho(), fetchKardexData()])
+    await Promise.all([fetchGuiasDespacho(), fetchKardexData(), fetchGuideMasterData()])
     setLoading(false)
   }
 
   useEffect(() => {
     fetchTraceabilityData()
-  }, [])
-  
-  const [guiasDespacho, setGuiasDespacho] = useState([])
 
+    // Auto-refresh tracking summary every 30 seconds
+    const interval = setInterval(() => {
+      fetchGuideMasterData()
+    }, 30000)
+
+    return () => clearInterval(interval)
+  }, [])
+
+  const [guiasDespacho, setGuiasDespacho] = useState([])
   const [kardexData, setKardexData] = useState([])
 
   const handleCellClick = useCallback((rowId: number, field: string, currentValue: any, tab: string) => {
@@ -108,7 +200,7 @@ export default function TraceabilityModule() {
 
   const handleCellSave = useCallback(() => {
     if (!editingCell) return
-    
+
     if (editingCell.tab === 'guias') {
       setGuiasDespacho(prev => prev.map(item => {
         if (item.id === editingCell.rowId) {
@@ -123,8 +215,8 @@ export default function TraceabilityModule() {
       setKardexData(prev => prev.map(item => {
         if (item.id === editingCell.rowId) {
           const updatedItem = { ...item }
-          const fieldValue = ['cantidadEntrada', 'cantidadSalida', 'saldo'].includes(editingCell.field) 
-                            ? parseFloat(editValue) || 0 
+          const fieldValue = ['cantidadEntrada', 'cantidadSalida', 'saldo'].includes(editingCell.field)
+                            ? parseFloat(editValue) || 0
                             : editValue
           updatedItem[editingCell.field] = fieldValue
           return updatedItem
@@ -132,7 +224,7 @@ export default function TraceabilityModule() {
         return item
       }))
     }
-    
+
     setEditingCell(null)
     setEditValue("")
     setHasChanges(true)
@@ -147,7 +239,7 @@ export default function TraceabilityModule() {
   const handleSelectRow = useCallback((rowId: number, tab: string) => {
     setSelectedRows(prev => ({
       ...prev,
-      [tab]: prev[tab].includes(rowId) 
+      [tab]: prev[tab].includes(rowId)
         ? prev[tab].filter(id => id !== rowId)
         : [...prev[tab], rowId]
     }))
@@ -263,13 +355,13 @@ export default function TraceabilityModule() {
     const isEditing = editingCell?.rowId === item.id && editingCell?.field === field && editingCell?.tab === tab
     const value = item[field]
     const isSelected = selectedRows[tab]?.includes(item.id)
-    
+
     if (isEditing) {
       if (field === 'estado' || field === 'tipoMovimiento') {
-        const options = field === 'estado' 
+        const options = field === 'estado'
           ? ['Pendiente', 'Despachado', 'En Tránsito', 'Entregado']
           : ['Entrada', 'Salida', 'Ajuste', 'Transferencia']
-            
+
         return (
           <div className="flex items-center gap-1">
             <Select value={editValue} onValueChange={setEditValue}>
@@ -316,7 +408,7 @@ export default function TraceabilityModule() {
     }
 
     const cellClass = `cursor-pointer hover:bg-gray-50 p-2 rounded min-h-[32px] border border-transparent hover:border-blue-300 ${isSelected ? 'bg-blue-50' : ''}`
-    
+
     if (field === 'estado') {
       const variant = value === "Pendiente" ? "destructive" : value === "Despachado" ? "default" : "secondary"
       return (
@@ -325,7 +417,7 @@ export default function TraceabilityModule() {
         </div>
       )
     }
-    
+
     if (field === 'tipoMovimiento') {
       const variant = value === "Entrada" ? "default" : value === "Salida" ? "destructive" : "secondary"
       return (
@@ -360,13 +452,222 @@ export default function TraceabilityModule() {
 
       {!loading && (
         <>
-          <Tabs defaultValue="guias" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+          <Tabs defaultValue="master" className="w-full">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="master">Guías Madre</TabsTrigger>
           <TabsTrigger value="guias">Guías de Despacho</TabsTrigger>
           <TabsTrigger value="kardex">Kardex</TabsTrigger>
           <TabsTrigger value="scanning">Escaneo de Guías</TabsTrigger>
         </TabsList>
 
+        {/* TAB: GUÍAS MADRE */}
+        <TabsContent value="master" className="space-y-4">
+          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+            <div>
+              <h3 className="text-2xl font-bold">Control de Guías Madre</h3>
+              <p className="text-muted-foreground">Sistema de seguimiento en tiempo real con comparación automática</p>
+            </div>
+            <Button onClick={() => setShowGuideMasterUpload(true)}>
+              <FileUp className="w-4 h-4 mr-2" />
+              Importar CSV Droppi
+            </Button>
+          </div>
+
+          {/* Dashboard en Tiempo Real */}
+          {trackingSummary && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <Package className="w-4 h-4 text-blue-600" />
+                    Total Guías
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold">{trackingSummary.total_guides}</div>
+                  <p className="text-xs text-muted-foreground mt-1">Guías en el sistema</p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-green-600" />
+                    Escaneadas
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold text-green-600">{trackingSummary.guides_scanned}</div>
+                  <Progress value={trackingSummary.completion_percentage} className="mt-2" />
+                  <p className="text-xs text-muted-foreground mt-1">{trackingSummary.completion_percentage.toFixed(1)}% completado</p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-orange-600" />
+                    Pendientes
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold text-orange-600">{trackingSummary.guides_pending}</div>
+                  <p className="text-xs text-muted-foreground mt-1">Por escanear</p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-red-600" />
+                    Desconocidas
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold text-red-600">{trackingSummary.guides_unknown}</div>
+                  <p className="text-xs text-muted-foreground mt-1">No están en lista madre</p>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* Alerts */}
+          {unknownGuides.length > 0 && (
+            <Alert className="border-red-500">
+              <AlertCircle className="w-4 h-4 text-red-600" />
+              <AlertTitle className="text-red-600">Guías Desconocidas Detectadas</AlertTitle>
+              <AlertDescription>
+                Se han escaneado {unknownGuides.length} guías que NO están en la lista maestra. Revisa estas guías para verificar su origen.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Lotes de Importación */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Lotes de Importación</CardTitle>
+              <CardDescription>Historial de archivos CSV importados desde Droppi</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Nombre del Lote</TableHead>
+                    <TableHead>Fecha de Importación</TableHead>
+                    <TableHead>Total Guías</TableHead>
+                    <TableHead>Progreso</TableHead>
+                    <TableHead>Acciones</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {importBatches.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                        No hay lotes importados. Importa un CSV de Droppi para comenzar.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    importBatches.map((batch) => (
+                      <TableRow key={batch.id}>
+                        <TableCell className="font-medium">{batch.batch_name}</TableCell>
+                        <TableCell>{new Date(batch.import_date).toLocaleString('es-ES')}</TableCell>
+                        <TableCell>{batch.total_guides}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Progress value={50} className="w-24" />
+                            <span className="text-xs">50%</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Button variant="ghost" size="sm">
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          {/* Guías Pendientes */}
+          {pendingGuides.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Guías Pendientes de Escanear</CardTitle>
+                <CardDescription>Estas guías están en la lista madre pero aún no han sido escaneadas</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="max-h-64 overflow-y-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Código</TableHead>
+                        <TableHead>Cliente</TableHead>
+                        <TableHead>Fecha</TableHead>
+                        <TableHead>Productos</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {pendingGuides.slice(0, 10).map((guide) => (
+                        <TableRow key={guide.id}>
+                          <TableCell className="font-mono">{guide.codigo}</TableCell>
+                          <TableCell>{guide.cliente || '-'}</TableCell>
+                          <TableCell>{guide.fecha}</TableCell>
+                          <TableCell>{guide.productos || 0}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                {pendingGuides.length > 10 && (
+                  <p className="text-xs text-muted-foreground mt-2 text-center">
+                    Mostrando 10 de {pendingGuides.length} guías pendientes
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Guías Desconocidas */}
+          {unknownGuides.length > 0 && (
+            <Card className="border-red-200">
+              <CardHeader>
+                <CardTitle className="text-red-600">Guías Desconocidas</CardTitle>
+                <CardDescription>Estas guías fueron escaneadas pero NO están en la lista maestra</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Código</TableHead>
+                      <TableHead>Fecha Escaneo</TableHead>
+                      <TableHead>Veces Escaneada</TableHead>
+                      <TableHead>Ubicación</TableHead>
+                      <TableHead>Notas</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {unknownGuides.map((guide) => (
+                      <TableRow key={guide.id}>
+                        <TableCell className="font-mono font-bold text-red-600">{guide.codigo}</TableCell>
+                        <TableCell>{new Date(guide.first_scan_at).toLocaleString('es-ES')}</TableCell>
+                        <TableCell>
+                          <Badge variant="destructive">{guide.scans_count}</Badge>
+                        </TableCell>
+                        <TableCell>{guide.location || '-'}</TableCell>
+                        <TableCell className="max-w-xs truncate">{guide.notes || '-'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* TAB: GUÍAS DE DESPACHO (Original) */}
         <TabsContent value="guias" className="space-y-4">
           <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
             <div className="flex flex-col sm:flex-row gap-4 flex-1">
@@ -456,7 +757,7 @@ export default function TraceabilityModule() {
                     return (
                       <TableRow key={guia.id} className={isSelected ? 'bg-blue-50' : ''}>
                         <TableCell>
-                          <Checkbox 
+                          <Checkbox
                             checked={isSelected}
                             onCheckedChange={() => handleSelectRow(guia.id, 'guias')}
                           />
@@ -486,6 +787,7 @@ export default function TraceabilityModule() {
           </Card>
         </TabsContent>
 
+        {/* TAB: KARDEX (Original) */}
         <TabsContent value="kardex" className="space-y-4">
           <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
             <div className="flex flex-col sm:flex-row gap-4 flex-1">
@@ -585,7 +887,7 @@ export default function TraceabilityModule() {
                     return (
                       <TableRow key={movement.id} className={isSelected ? 'bg-blue-50' : ''}>
                         <TableCell>
-                          <Checkbox 
+                          <Checkbox
                             checked={isSelected}
                             onCheckedChange={() => handleSelectRow(movement.id, 'kardex')}
                           />
@@ -612,18 +914,28 @@ export default function TraceabilityModule() {
           </Card>
         </TabsContent>
 
+        {/* TAB: ESCANEO DE GUÍAS (Original) */}
         <TabsContent value="scanning" className="space-y-4">
           <ScanningInterface />
         </TabsContent>
       </Tabs>
-      
-      <BulkImportModal 
-        isOpen={showImportModal} 
-        onClose={() => setShowImportModal(false)} 
+
+      <BulkImportModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
       />
       <BulkGuideImportModal
         isOpen={showGuideImportModal}
         onClose={() => setShowGuideImportModal(false)}
+      />
+
+      <GuideMasterUpload
+        isOpen={showGuideMasterUpload}
+        onClose={() => setShowGuideMasterUpload(false)}
+        onSuccess={() => {
+          fetchGuideMasterData()
+          toast.success("Guías madre importadas correctamente")
+        }}
       />
 
       <GuideModal

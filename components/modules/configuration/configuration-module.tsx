@@ -148,29 +148,34 @@ export default function ConfigurationModule() {
   return (
     <div className="p-6 space-y-6">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className={`grid w-full ${isAdminOrProgrammer ? 'grid-cols-4' : 'grid-cols-2'}`}>
-          <TabsTrigger value="general" className="flex items-center gap-2">
-            <Settings className="w-4 h-4" />
-            General
+        <TabsList className={`grid w-full ${isAdminOrProgrammer ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-5' : 'grid-cols-2 sm:grid-cols-4'} gap-1`}>
+          <TabsTrigger value="general" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm">
+            <Settings className="w-3 h-3 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">General</span>
+            <span className="sm:hidden">General</span>
           </TabsTrigger>
           {isAdminOrProgrammer && (
-            <TabsTrigger value="usuarios" className="flex items-center gap-2">
-              <Users className="w-4 h-4" />
-              Usuarios
+            <TabsTrigger value="usuarios" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm">
+              <Users className="w-3 h-3 sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">Usuarios</span>
+              <span className="sm:hidden">Users</span>
             </TabsTrigger>
           )}
-          <TabsTrigger value="seguridad" className="flex items-center gap-2">
-            <Shield className="w-4 h-4" />
-            Seguridad
+          <TabsTrigger value="seguridad" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm">
+            <Shield className="w-3 h-3 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">Seguridad</span>
+            <span className="sm:hidden">Seg.</span>
           </TabsTrigger>
-          <TabsTrigger value="notificaciones" className="flex items-center gap-2">
-            <Bell className="w-4 h-4" />
-            Alertas
+          <TabsTrigger value="notificaciones" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm">
+            <Bell className="w-3 h-3 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">Alertas</span>
+            <span className="sm:hidden">Alert</span>
           </TabsTrigger>
           {isAdminOrProgrammer && (
-            <TabsTrigger value="datos" className="flex items-center gap-2">
-              <Database className="w-4 h-4" />
-              Datos
+            <TabsTrigger value="datos" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm">
+              <Database className="w-3 h-3 sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">Datos</span>
+              <span className="sm:hidden">Data</span>
             </TabsTrigger>
           )}
         </TabsList>
@@ -356,16 +361,16 @@ export default function ConfigurationModule() {
                   Nuevo Usuario
                 </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-md">
+              <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle>Crear Nuevo Usuario</DialogTitle>
-                  <DialogDescription>
+                  <DialogTitle className="text-base sm:text-lg">Crear Nuevo Usuario</DialogTitle>
+                  <DialogDescription className="text-xs sm:text-sm">
                     Completa la información para crear un nuevo usuario en el sistema
                   </DialogDescription>
                 </DialogHeader>
 
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-3 sm:space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="new-full-name">Nombre Completo *</Label>
                       <Input
@@ -574,48 +579,48 @@ export default function ConfigurationModule() {
                     device: "Chrome - Android"
                   },
                 ].map((user, index) => (
-                  <div key={index} className="p-4 border rounded-lg bg-gradient-to-r from-slate-50 to-slate-100">
-                    <div className="flex items-center justify-between mb-3">
+                  <div key={index} className="p-3 sm:p-4 border rounded-lg bg-gradient-to-r from-slate-50 to-slate-100">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
                       <div className="flex items-center gap-3">
                         <div className="relative">
-                          <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-medium text-lg">
+                          <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-medium text-sm sm:text-lg">
                             {user.name
                               .split(" ")
                               .map((n) => n[0])
                               .join("")}
                           </div>
-                          <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${
+                          <div className={`absolute -bottom-1 -right-1 w-3 h-3 sm:w-4 sm:h-4 rounded-full border-2 border-white ${
                             user.status === "En línea" ? "bg-green-500" : "bg-gray-400"
                           }`}></div>
                         </div>
                         <div>
-                          <p className="font-semibold text-lg">{user.name}</p>
-                          <p className="text-sm text-muted-foreground capitalize">{user.role}</p>
+                          <p className="font-semibold text-base sm:text-lg">{user.name}</p>
+                          <p className="text-xs sm:text-sm text-muted-foreground capitalize">{user.role}</p>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <Badge variant={user.status === "En línea" ? "default" : "secondary"} className="mb-1">
+                      <div className="flex sm:flex-col items-center sm:items-end gap-2">
+                        <Badge variant={user.status === "En línea" ? "default" : "secondary"} className="text-xs">
                           {user.status}
                         </Badge>
                         <p className="text-xs text-muted-foreground">{user.lastActivity}</p>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 text-xs sm:text-sm">
                       <div className="flex items-center gap-2">
-                        <Eye className="w-4 h-4 text-blue-600" />
-                        <span className="text-muted-foreground">Ubicación:</span>
-                        <span className="font-medium">{user.location}</span>
+                        <Eye className="w-3 h-3 sm:w-4 sm:h-4 text-blue-600 flex-shrink-0" />
+                        <span className="text-muted-foreground whitespace-nowrap">Ubicación:</span>
+                        <span className="font-medium truncate">{user.location}</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Settings className="w-4 h-4 text-green-600" />
-                        <span className="text-muted-foreground">IP:</span>
-                        <span className="font-mono text-xs">{user.ipAddress}</span>
+                        <Settings className="w-3 h-3 sm:w-4 sm:h-4 text-green-600 flex-shrink-0" />
+                        <span className="text-muted-foreground whitespace-nowrap">IP:</span>
+                        <span className="font-mono text-xs truncate">{user.ipAddress}</span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <FileText className="w-4 h-4 text-purple-600" />
-                        <span className="text-muted-foreground">Dispositivo:</span>
-                        <span className="font-medium text-xs">{user.device}</span>
+                      <div className="flex items-center gap-2 sm:col-span-2 lg:col-span-1">
+                        <FileText className="w-3 h-3 sm:w-4 sm:h-4 text-purple-600 flex-shrink-0" />
+                        <span className="text-muted-foreground whitespace-nowrap">Dispositivo:</span>
+                        <span className="font-medium text-xs truncate">{user.device}</span>
                       </div>
                     </div>
                   </div>

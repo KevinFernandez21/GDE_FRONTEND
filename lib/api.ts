@@ -40,9 +40,11 @@ class ApiClient {
   }
 
   setToken(token: string) {
+    console.log('[ApiClient] Setting token, length:', token?.length || 0);
     this.token = token;
     if (typeof window !== 'undefined') {
       localStorage.setItem('gde_token', token);
+      console.log('[ApiClient] Token saved to localStorage');
     }
   }
 
@@ -67,6 +69,8 @@ class ApiClient {
       }
     }
 
+    console.log(`[ApiClient] Request to ${endpoint}, has token:`, !!this.token);
+
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
       ...options.headers,
@@ -74,14 +78,19 @@ class ApiClient {
 
     if (this.token) {
       headers.Authorization = `Bearer ${this.token}`;
+      console.log(`[ApiClient] Token added to headers`);
+    } else {
+      console.warn(`[ApiClient] No token available for request to ${endpoint}`);
     }
 
     try {
+      console.log(`[ApiClient] Fetching ${url}`);
       const response = await fetch(url, {
         ...options,
         headers,
       });
 
+      console.log(`[ApiClient] Response status: ${response.status}`);
       const data = await response.json();
 
       if (!response.ok) {
@@ -120,19 +129,19 @@ class ApiClient {
   // Auth endpoints
   async login(username: string, password: string) {
     return this.request<{
-      access_token: string; 
+      access_token: string;
       token_type: string;
       expires_in: number;
       user: any;
-    }>('/auth/login-simple', {
+    }>('/auth/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ 
-        username, 
-        password, 
-        remember_me: false 
+      body: JSON.stringify({
+        username,
+        password,
+        remember_me: false
       }),
     });
   }

@@ -29,18 +29,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Check for existing token on mount
   useEffect(() => {
     const checkAuth = async () => {
-      const token = localStorage.getItem('gde_token')
-      if (token) {
-        apiClient.setToken(token)
-        const response = await apiClient.getCurrentUser()
-        if (response.data) {
-          setUser(response.data)
+      try {
+        const token = localStorage.getItem('gde_token')
+        console.log('[AuthContext] Checking auth on mount, token exists:', !!token)
+
+        if (token) {
+          console.log('[AuthContext] Setting token to apiClient')
+          apiClient.setToken(token)
+
+          console.log('[AuthContext] Fetching current user')
+          const response = await apiClient.getCurrentUser()
+
+          if (response.data) {
+            console.log('[AuthContext] User authenticated:', response.data.username)
+            setUser(response.data)
+          } else {
+            // Invalid token, clear it
+            console.warn('[AuthContext] Invalid token, clearing:', response.error)
+            apiClient.clearToken()
+            localStorage.removeItem('gde_token')
+          }
         } else {
-          // Invalid token, clear it
-          apiClient.clearToken()
+          console.log('[AuthContext] No token found in localStorage')
         }
+      } catch (error) {
+        console.error('[AuthContext] Error checking auth:', error)
+        apiClient.clearToken()
+        localStorage.removeItem('gde_token')
+      } finally {
+        setIsLoading(false)
       }
-      setIsLoading(false)
     }
 
     checkAuth()
