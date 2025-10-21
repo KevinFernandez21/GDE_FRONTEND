@@ -82,26 +82,52 @@ interface RealtimeMetrics {
 export default function RealtimeDashboard() {
   const [metrics, setMetrics] = useState<RealtimeMetrics | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [refreshInterval, setRefreshInterval] = useState(30) // seconds
 
   const fetchRealtimeMetrics = async () => {
     try {
+      setError(null) // Clear previous errors
       const response = await apiClient.request('/dashboard/realtime-metrics', {
         method: 'GET'
       })
 
       if (response.data) {
-        setMetrics(response.data)
-        setLastUpdate(new Date())
-      } else {
-        if (response.error) {
-          console.error('Error fetching metrics:', response.error)
+        // Validate that the response has the expected structure
+        if (response.data && typeof response.data === 'object') {
+          // Additional validation for required fields
+          const requiredFields = ['stock_metrics', 'guide_tracking', 'scanning_activity', 'financial_metrics']
+          const hasRequiredFields = requiredFields.every(field => response.data[field] !== undefined)
+          
+          if (hasRequiredFields) {
+            setMetrics(response.data)
+            setLastUpdate(new Date())
+            setError(null)
+          } else {
+            const errorMsg = 'Estructura de datos incompleta'
+            console.error('Invalid response data structure:', response.data)
+            setError(errorMsg)
+            toast.error(`Error: ${errorMsg}`)
+          }
+        } else {
+          const errorMsg = 'Datos de métricas inválidos'
+          console.error('Invalid response data structure:', response.data)
+          setError(errorMsg)
+          toast.error(`Error: ${errorMsg}`)
         }
+      } else {
+        const errorMessage = response.error || 'Error desconocido al obtener métricas'
+        console.error('Error fetching metrics:', errorMessage)
+        setError(errorMessage)
+        toast.error(`Error: ${errorMessage}`)
       }
     } catch (error) {
-      console.error('Error fetching realtime metrics:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Error de conexión'
+      console.error('Error fetching realtime metrics:', errorMessage)
+      setError(errorMessage)
+      toast.error(`Error de conexión: ${errorMessage}`)
     } finally {
       setLoading(false)
     }
@@ -166,13 +192,21 @@ export default function RealtimeDashboard() {
     )
   }
 
-  if (!metrics) {
+  if (!metrics || error) {
     return (
       <div className="flex items-center justify-center h-96">
-        <div className="text-center">
+        <div className="text-center max-w-md">
           <AlertTriangle className="h-8 w-8 mx-auto mb-4 text-orange-600" />
-          <p className="text-muted-foreground">No se pudieron cargar las métricas</p>
+          <p className="text-muted-foreground mb-2">
+            {error ? `Error: ${error}` : 'No se pudieron cargar las métricas'}
+          </p>
+          {error && (
+            <p className="text-xs text-muted-foreground mb-4">
+              Verifica que el backend esté funcionando correctamente y que la base de datos esté disponible.
+            </p>
+          )}
           <Button onClick={fetchRealtimeMetrics} className="mt-4">
+            <RotateCcw className="w-4 h-4 mr-2" />
             Reintentar
           </Button>
         </div>

@@ -23,6 +23,34 @@ export default function ManagementModule() {
   const [showExpenseImportModal, setShowExpenseImportModal] = useState(false)
   const [showCapitalImportModal, setShowCapitalImportModal] = useState(false)
 
+  // Helper function to safely format numbers
+  const formatCurrency = (value: any, options?: Intl.NumberFormatOptions) => {
+    if (value === null || value === undefined || isNaN(value)) {
+      return '0'
+    }
+    return Number(value).toLocaleString('es-CL', {
+      style: 'currency',
+      currency: 'CLP',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+      ...options
+    })
+  }
+
+  const formatNumber = (value: any, options?: Intl.NumberFormatOptions) => {
+    if (value === null || value === undefined || isNaN(value)) {
+      return '0'
+    }
+    return Number(value).toLocaleString('es-CL', options)
+  }
+
+  const formatPercentage = (value: any, decimals: number = 1) => {
+    if (value === null || value === undefined || isNaN(value)) {
+      return '0.0'
+    }
+    return Number(value).toFixed(decimals)
+  }
+
   // Modals state
   const [showCostModal, setShowCostModal] = useState(false)
   const [showExpenseModal, setShowExpenseModal] = useState(false)
@@ -133,7 +161,25 @@ export default function ManagementModule() {
       })
 
       if (kpis) {
-        setKpiFinancieros(kpis)
+        // Merge with default values to ensure all properties exist
+        setKpiFinancieros({
+          totalCostos: 0,
+          totalGastos: 0,
+          totalCapital: 0,
+          utilidadBruta: 0,
+          utilidadNeta: 0,
+          margenBruto: 0,
+          rotacionInventario: 0,
+          aporteSocios: 0,
+          prestamosActivos: 0,
+          ventasTotales: 0,
+          activosTotales: 0,
+          pasivosTotales: 0,
+          patrimonio: 0,
+          ratioEndeudamiento: 0,
+          costo_promedio_ponderado: 0,
+          ...kpis
+        })
       }
     } catch (error) {
       console.error('Error fetching management data:', error)
@@ -411,7 +457,7 @@ export default function ManagementModule() {
     if (field === 'monto') {
       return (
         <div className={cellClass} onClick={() => handleCellClick(item.id, field, value, tab)}>
-          <span className="font-bold">${value.toLocaleString()}</span>
+          <span className="font-bold">{formatCurrency(value)}</span>
         </div>
       )
     }
@@ -522,7 +568,7 @@ export default function ManagementModule() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-red-800">Total Costos</p>
-                    <p className="text-2xl font-bold text-red-600">${kpiFinancieros.totalCostos.toLocaleString()}</p>
+                    <p className="text-2xl font-bold text-red-600">{formatCurrency(kpiFinancieros.totalCostos)}</p>
                   </div>
                   <DollarSign className="w-8 h-8 text-red-600" />
                 </div>
@@ -534,7 +580,7 @@ export default function ManagementModule() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-blue-800">Costo Promedio Ponderado</p>
-                    <p className="text-2xl font-bold text-blue-600">${kpiFinancieros.costo_promedio_ponderado.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                    <p className="text-2xl font-bold text-blue-600">{formatCurrency(kpiFinancieros.costo_promedio_ponderado, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
                   </div>
                   <BarChart3 className="w-8 h-8 text-blue-600" />
                 </div>
@@ -739,16 +785,16 @@ export default function ManagementModule() {
                 <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
                   <span className="font-medium">Capital Total</span>
                   <span className="text-2xl font-bold text-green-600">
-                    ${kpiFinancieros.totalCapital.toLocaleString()}
+                    {formatCurrency(kpiFinancieros.totalCapital)}
                   </span>
                 </div>
                 <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
                   <span className="font-medium">Aportes de Socios</span>
-                  <span className="text-xl font-bold text-blue-600">${kpiFinancieros.aporteSocios.toLocaleString()}</span>
+                  <span className="text-xl font-bold text-blue-600">{formatCurrency(kpiFinancieros.aporteSocios)}</span>
                 </div>
                 <div className="flex justify-between items-center p-3 bg-orange-50 rounded-lg">
                   <span className="font-medium">Préstamos Activos</span>
-                  <span className="text-xl font-bold text-orange-600">${kpiFinancieros.prestamosActivos.toLocaleString()}</span>
+                  <span className="text-xl font-bold text-orange-600">{formatCurrency(kpiFinancieros.prestamosActivos)}</span>
                 </div>
               </CardContent>
             </Card>
@@ -761,19 +807,19 @@ export default function ManagementModule() {
                 <div className="space-y-2">
                   <div className="flex justify-between">
                     <span>Activos Totales</span>
-                    <span className="font-bold">${kpiFinancieros.activosTotales.toLocaleString()}</span>
+                    <span className="font-bold">{formatCurrency(kpiFinancieros.activosTotales)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Pasivos Totales</span>
-                    <span className="font-bold">${kpiFinancieros.pasivosTotales.toLocaleString()}</span>
+                    <span className="font-bold">{formatCurrency(kpiFinancieros.pasivosTotales)}</span>
                   </div>
                   <div className="flex justify-between border-t pt-2">
                     <span className="font-bold">Patrimonio</span>
-                    <span className="font-bold text-green-600">${kpiFinancieros.patrimonio.toLocaleString()}</span>
+                    <span className="font-bold text-green-600">{formatCurrency(kpiFinancieros.patrimonio)}</span>
                   </div>
                 </div>
                 <Progress value={kpiFinancieros.ratioEndeudamiento} className="mt-4" />
-                <p className="text-sm text-muted-foreground">Ratio de Endeudamiento: {kpiFinancieros.ratioEndeudamiento.toFixed(1)}%</p>
+                <p className="text-sm text-muted-foreground">Ratio de Endeudamiento: {formatNumber(kpiFinancieros.ratioEndeudamiento, {minimumFractionDigits: 1, maximumFractionDigits: 1})}%</p>
               </CardContent>
             </Card>
           </div>
@@ -868,7 +914,7 @@ export default function ManagementModule() {
               </CardHeader>
               <CardContent>
                 <div className="text-3xl font-bold text-green-600 mb-2">
-                  ${kpiFinancieros.utilidadBruta.toLocaleString()}
+                  {formatCurrency(kpiFinancieros.utilidadBruta)}
                 </div>
                 <p className="text-sm text-muted-foreground">Ventas - Costo de Ventas</p>
                 <Progress value={75} className="mt-2" />
@@ -912,23 +958,23 @@ export default function ManagementModule() {
               <CardContent className="space-y-3">
                 <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
                   <span className="font-medium">Ventas Totales</span>
-                  <span className="font-bold text-green-600">${kpiFinancieros.ventasTotales.toLocaleString()}</span>
+                  <span className="font-bold text-green-600">{formatCurrency(kpiFinancieros.ventasTotales)}</span>
                 </div>
                 <div className="flex justify-between items-center p-3 bg-red-50 rounded-lg">
                   <span className="font-medium">Costo de Ventas</span>
-                  <span className="font-bold text-red-600">-${kpiFinancieros.totalCostos.toLocaleString()}</span>
+                  <span className="font-bold text-red-600">-{formatCurrency(kpiFinancieros.totalCostos)}</span>
                 </div>
                 <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
                   <span className="font-medium">Utilidad Bruta</span>
-                  <span className="font-bold text-blue-600">${kpiFinancieros.utilidadBruta.toLocaleString()}</span>
+                  <span className="font-bold text-blue-600">{formatCurrency(kpiFinancieros.utilidadBruta)}</span>
                 </div>
                 <div className="flex justify-between items-center p-3 bg-orange-50 rounded-lg">
                   <span className="font-medium">Gastos Operativos</span>
-                  <span className="font-bold text-orange-600">-${kpiFinancieros.totalGastos.toLocaleString()}</span>
+                  <span className="font-bold text-orange-600">-{formatCurrency(kpiFinancieros.totalGastos)}</span>
                 </div>
                 <div className="flex justify-between items-center p-3 bg-purple-50 rounded-lg border-2 border-purple-200">
                   <span className="font-bold">Utilidad Neta</span>
-                  <span className="font-bold text-purple-600 text-xl">${(kpiFinancieros.utilidadBruta - kpiFinancieros.totalGastos).toLocaleString()}</span>
+                  <span className="font-bold text-purple-600 text-xl">{formatCurrency(kpiFinancieros.utilidadBruta - kpiFinancieros.totalGastos)}</span>
                 </div>
               </CardContent>
             </Card>
@@ -941,21 +987,21 @@ export default function ManagementModule() {
                 <div>
                   <div className="flex justify-between mb-2">
                     <span>Costo de Ventas</span>
-                    <span>{kpiFinancieros.porc_costos_ventas.toFixed(1)}%</span>
+                    <span>{formatPercentage(kpiFinancieros.porc_costos_ventas)}%</span>
                   </div>
                   <Progress value={kpiFinancieros.porc_costos_ventas} />
                 </div>
                 <div>
                   <div className="flex justify-between mb-2">
                     <span>Gastos Administrativos</span>
-                    <span>{kpiFinancieros.porc_gastos_admin.toFixed(1)}%</span>
+                    <span>{formatPercentage(kpiFinancieros.porc_gastos_admin)}%</span>
                   </div>
                   <Progress value={kpiFinancieros.porc_gastos_admin} />
                 </div>
                 <div>
                   <div className="flex justify-between mb-2">
                     <span>Utilidad Neta</span>
-                    <span>{kpiFinancieros.porc_utilidad_neta.toFixed(1)}%</span>
+                    <span>{formatPercentage(kpiFinancieros.porc_utilidad_neta)}%</span>
                   </div>
                   <Progress value={Math.max(0, kpiFinancieros.porc_utilidad_neta)} />
                 </div>
