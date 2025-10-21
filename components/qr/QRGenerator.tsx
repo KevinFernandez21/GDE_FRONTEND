@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import { QrCode, Download, Copy, ExternalLink } from "lucide-react"
 import { toast } from "sonner"
 import QRCode from "qrcode"
+import { useDeviceIP } from '@/hooks/use-device-ip'
 
 interface DispatchGuide {
   id: string
@@ -21,6 +22,9 @@ export default function QRGenerator() {
   const [qrDataUrl, setQrDataUrl] = useState("")
   const [scanUrl, setScanUrl] = useState("")
   const [loading, setLoading] = useState(false)
+  
+  // Hook para detectar la IP del dispositivo
+  const { deviceIP, isLoading: isDetectingIP, error: ipError } = useDeviceIP()
 
   const generateQR = async () => {
     if (!guideId.trim()) {
@@ -30,8 +34,17 @@ export default function QRGenerator() {
 
     setLoading(true)
     try {
-      const baseUrl = window.location.origin
-      const url = `${baseUrl}/scan/${guideId}`
+      // Use detected device IP if available, otherwise fallback to current hostname
+      const port = window.location.port || '3000'
+      const hostname = deviceIP || window.location.hostname
+      
+      let url: string
+      if (deviceIP && deviceIP !== '127.0.0.1') {
+        url = `http://${deviceIP}:${port}/scan/${guideId}`
+      } else {
+        url = `${window.location.protocol}//${hostname}:${port}/scan/${guideId}`
+      }
+      
       setScanUrl(url)
       
       const qrOptions = {
@@ -161,6 +174,21 @@ export default function QRGenerator() {
                   <ExternalLink className="h-4 w-4" />
                 </Button>
               </div>
+              {deviceIP && (
+                <div className="text-xs text-green-400">
+                  ✓ IP del dispositivo detectada: {deviceIP}
+                </div>
+              )}
+              {isDetectingIP && (
+                <div className="text-xs text-yellow-400">
+                  🔍 Detectando IP del dispositivo...
+                </div>
+              )}
+              {ipError && (
+                <div className="text-xs text-red-400">
+                  ⚠️ No se pudo detectar la IP automáticamente
+                </div>
+              )}
             </div>
 
             <div className="flex space-x-2">

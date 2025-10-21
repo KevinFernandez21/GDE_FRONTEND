@@ -6,13 +6,14 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Scan, Camera, CameraOff, RotateCcw, ExternalLink } from "lucide-react"
 import { toast } from "sonner"
+import QrScanner from 'qr-scanner'
 
 export default function QRScanner() {
   const [isScanning, setIsScanning] = useState(false)
   const [scannedData, setScannedData] = useState<string[]>([])
   const [hasCamera, setHasCamera] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
-  const streamRef = useRef<MediaStream | null>(null)
+  const qrScannerRef = useRef<QrScanner | null>(null)
 
   useEffect(() => {
     checkCameraAvailability()
@@ -23,9 +24,8 @@ export default function QRScanner() {
 
   const checkCameraAvailability = async () => {
     try {
-      const devices = await navigator.mediaDevices.enumerateDevices()
-      const hasVideoDevice = devices.some(device => device.kind === 'videoinput')
-      setHasCamera(hasVideoDevice)
+      const hasCamera = await QrScanner.hasCamera()
+      setHasCamera(hasCamera)
     } catch (error) {
       console.error('Error checking camera:', error)
       setHasCamera(false)
@@ -34,23 +34,23 @@ export default function QRScanner() {
 
   const startCamera = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { 
-          facingMode: 'environment',
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
+      if (!videoRef.current) return
+
+      qrScannerRef.current = new QrScanner(
+        videoRef.current,
+        (result) => {
+          handleQRDetected(result.data)
+        },
+        {
+          highlightScanRegion: true,
+          highlightCodeOutline: true,
+          preferredCamera: 'environment'
         }
-      })
-      
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        streamRef.current = stream
-        setIsScanning(true)
-        toast.success("Cámara iniciada - Escanea un código QR")
-        
-        // Simular detección de QR (en producción usarías una librería como qr-scanner)
-        simulateQRDetection()
-      }
+      )
+
+      await qrScannerRef.current.start()
+      setIsScanning(true)
+      toast.success("Cámara iniciada - Escanea un código QR")
     } catch (error) {
       console.error('Error starting camera:', error)
       toast.error("Error al acceder a la cámara")
@@ -58,32 +58,14 @@ export default function QRScanner() {
   }
 
   const stopCamera = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop())
-      streamRef.current = null
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null
+    if (qrScannerRef.current) {
+      qrScannerRef.current.stop()
+      qrScannerRef.current.destroy()
+      qrScannerRef.current = null
     }
     setIsScanning(false)
   }
 
-  // Simulación de detección de QR (en producción integrarías qr-scanner)
-  const simulateQRDetection = () => {
-    const interval = setInterval(() => {
-      if (!isScanning) {
-        clearInterval(interval)
-        return
-      }
-      
-      // Simula la detección aleatoria de QRs para demo
-      if (Math.random() < 0.1) { // 10% probabilidad cada 2 segundos
-        const mockQRData = `${window.location.origin}/scan/GD-${Date.now()}`
-        handleQRDetected(mockQRData)
-        clearInterval(interval)
-      }
-    }, 2000)
-  }
 
   const handleQRDetected = (data: string) => {
     setScannedData(prev => [data, ...prev])

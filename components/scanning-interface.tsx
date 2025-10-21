@@ -27,6 +27,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Progress } from "@/components/ui/progress"
 import { toast } from "sonner"
+import { useDeviceIP } from '@/hooks/use-device-ip'
 
 interface ScanSession {
   id: string
@@ -83,6 +84,14 @@ export default function ScanningInterface() {
     message: string
     details?: string
   } | null>(null)
+  
+  // Hook para detectar la IP del dispositivo
+  const { deviceIP, isLoading: isDetectingIP, error: ipError } = useDeviceIP()
+  
+  // Estado para IP manual y opciones alternativas
+  const [manualIP, setManualIP] = useState("")
+  const [showIPOptions, setShowIPOptions] = useState(false)
+  const [urlConnectivity, setUrlConnectivity] = useState<boolean | null>(null)
 
   const qrRef = useRef<HTMLDivElement>(null)
   const barcodeInputRef = useRef<HTMLInputElement>(null)
@@ -477,8 +486,31 @@ export default function ScanningInterface() {
   }
 
   const getMobileUrl = (sessionToken: string) => {
-    const baseUrl = window.location.origin
-    return `${baseUrl}/mobile-scan/${sessionToken}`
+    const port = window.location.port || '3000'
+    
+    // Use manual IP if set, otherwise use detected IP, otherwise fallback to current hostname
+    const hostname = manualIP || deviceIP || window.location.hostname
+    
+    // If we have a manual IP or detected IP, use it; otherwise use the current hostname
+    if ((manualIP || deviceIP) && hostname !== '127.0.0.1') {
+      return `http://${hostname}:${port}/mobile-scan/${sessionToken}`
+    }
+    
+    // Fallback to current hostname
+    return `${window.location.protocol}//${hostname}:${port}/mobile-scan/${sessionToken}`
+  }
+
+  const testUrlConnectivity = async (url: string) => {
+    try {
+      const response = await fetch(url, { 
+        method: 'HEAD',
+        mode: 'no-cors',
+        cache: 'no-cache'
+      })
+      return true
+    } catch (error) {
+      return false
+    }
   }
 
   const formatDateTime = (dateStr: string) => {
@@ -962,33 +994,142 @@ export default function ScanningInterface() {
                 <AlertDescription className="text-center">
                   <strong>URL Móvil:</strong><br />
                   <code className="text-xs break-all">{getMobileUrl(currentSession.session_token)}</code>
+                  {deviceIP && !manualIP && (
+                    <div className="mt-2 text-xs text-green-600">
+                      ✓ IP del dispositivo detectada: {deviceIP}
+                    </div>
+                  )}
+                  {manualIP && (
+                    <div className="mt-2 text-xs text-blue-600">
+                      ✓ IP manual configurada: {manualIP}
+                    </div>
+                  )}
+                  {isDetectingIP && !manualIP && (
+                    <div className="mt-2 text-xs text-yellow-600">
+                      🔍 Detectando IP del dispositivo...
+                    </div>
+                  )}
+                  {ipError && !manualIP && (
+                    <div className="mt-2 text-xs text-red-600">
+                      ⚠️ No se pudo detectar la IP automáticamente
+                    </div>
+                  )}
+                  {urlConnectivity === false && (
+                    <div className="mt-2 text-xs text-red-600">
+                      ❌ La URL no es accesible desde el móvil
+                    </div>
+                  )}
+                  {urlConnectivity === true && (
+                    <div className="mt-2 text-xs text-green-600">
+                      ✅ URL accesible
+                    </div>
+                  )}
                 </AlertDescription>
               </Alert>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    navigator.clipboard.writeText(getMobileUrl(currentSession.session_token))
-                    toast.success("URL copiada al portapapeles")
-                  }}
-                  className="flex-1"
-                >
-                  Copiar URL
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    const link = document.createElement('a')
-                    link.href = generateQRCode(getMobileUrl(currentSession.session_token))
-                    link.download = `qr-session-${currentSession.session_name}.png`
-                    link.click()
-                  }}
-                  className="flex-1"
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  Descargar QR
-                </Button>
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      navigator.clipboard.writeText(getMobileUrl(currentSession.session_token))
+                      toast.success("URL copiada al portapapeles")
+                    }}
+                    className="flex-1"
+                  >
+                    Copiar URL
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      const link = document.createElement('a')
+                      link.href = generateQRCode(getMobileUrl(currentSession.session_token))
+                      link.download = `qr-session-${currentSession.session_name}.png`
+                      link.click()
+                    }}
+                    className="flex-1"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Descargar QR
+                  </Button>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowIPOptions(!showIPOptions)}
+                    className="flex-1"
+                  >
+                    ⚙️ Configurar IP
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={async () => {
+                      setUrlConnectivity(null)
+                      const url = getMobileUrl(currentSession.session_token)
+                      const isAccessible = await testUrlConnectivity(url)
+                      setUrlConnectivity(isAccessible)
+                      if (isAccessible) {
+                        toast.success("URL accesible desde el móvil")
+                      } else {
+                        toast.error("URL no accesible. Verifica la configuración de red")
+                      }
+                    }}
+                    className="flex-1"
+                  >
+                    🔍 Probar URL
+                  </Button>
+                </div>
               </div>
+              
+              {/* Panel de configuración de IP */}
+              {showIPOptions && (
+                <div className="mt-4 p-4 border rounded-lg bg-gray-50">
+                  <h4 className="font-medium mb-3">Configuración de IP</h4>
+                  <div className="space-y-3">
+                    <div>
+                      <Label htmlFor="manual-ip">IP Manual (opcional)</Label>
+                      <Input
+                        id="manual-ip"
+                        placeholder="Ej: 192.168.1.100"
+                        value={manualIP}
+                        onChange={(e) => setManualIP(e.target.value)}
+                        className="mt-1"
+                      />
+                      <p className="text-xs text-gray-600 mt-1">
+                        Si el QR no funciona, ingresa manualmente la IP de tu dispositivo
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setManualIP("")
+                          setUrlConnectivity(null)
+                        }}
+                      >
+                        Usar IP Automática
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setManualIP(window.location.hostname)
+                          setUrlConnectivity(null)
+                        }}
+                      >
+                        Usar Localhost
+                      </Button>
+                    </div>
+                    <div className="text-xs text-gray-600">
+                      <p><strong>IPs comunes:</strong></p>
+                      <p>• 192.168.1.x (red doméstica)</p>
+                      <p>• 192.168.0.x (red doméstica)</p>
+                      <p>• 10.0.0.x (red corporativa)</p>
+                      <p>• 172.16.x.x (red corporativa)</p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </DialogContent>

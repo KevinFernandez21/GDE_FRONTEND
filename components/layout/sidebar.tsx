@@ -16,7 +16,7 @@ export default function Sidebar() {
     { id: "inventario", icon: Package, label: "Inventario" },
     { id: "trazabilidad", icon: Truck, label: "Trazabilidad" },
     { id: "gestion", icon: RotateCcw, label: "Gestión" },
-    { id: "reportes", icon: FileText, label: "Reportes" },
+    // { id: "reportes", icon: FileText, label: "Reportes" }, // Oculto temporalmente
     { id: "configuracion", icon: Settings, label: "Configuración" },
   ]
 

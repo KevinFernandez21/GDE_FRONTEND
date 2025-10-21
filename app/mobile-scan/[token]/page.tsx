@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { useParams } from "next/navigation"
-import { Scan, RefreshCw, Check, X, ChevronLeft, MapPin, FileText, Package, Send } from "lucide-react"
+import { Scan, RefreshCw, Check, X, ChevronLeft, MapPin, FileText, Package, Send, Camera, CameraOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -11,6 +11,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { toast } from "sonner"
+import QrScanner from 'qr-scanner'
+import BarcodeScanner from '@/components/barcode-scanner'
+import SimpleCamera from '@/components/simple-camera'
 
 interface ScanSession {
   id: string
@@ -56,21 +59,31 @@ export default function MobileScanPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showDetails, setShowDetails] = useState(false)
+  const [isCameraScanning, setIsCameraScanning] = useState(false)
+  const [hasCamera, setHasCamera] = useState(false)
+  const [isBarcodeScannerActive, setIsBarcodeScannerActive] = useState(false)
+  const [useSimpleCamera, setUseSimpleCamera] = useState(false)
 
   const barcodeInputRef = useRef<HTMLInputElement>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const qrScannerRef = useRef<QrScanner | null>(null)
 
   useEffect(() => {
     if (token) {
       loadSessionData()
     }
+    checkCameraAvailability()
+    return () => {
+      stopCameraScanning()
+    }
   }, [token])
 
   useEffect(() => {
     // Auto-focus barcode input for mobile scanning
-    if (barcodeInputRef.current) {
+    if (barcodeInputRef.current && !isCameraScanning) {
       barcodeInputRef.current.focus()
     }
-  }, [session])
+  }, [session, isCameraScanning])
 
   const loadSessionData = async () => {
     try {
@@ -279,6 +292,64 @@ export default function MobileScanPage() {
     }
   }
 
+  const handleBarcodeScan = (barcode: string) => {
+    setScanBarcode(barcode)
+    toast.success(`Código escaneado: ${barcode}`)
+    
+    // Auto-submit si hay datos mínimos
+    if (barcode.trim()) {
+      setTimeout(() => {
+        submitScan()
+      }, 500)
+    }
+  }
+
+  const checkCameraAvailability = async () => {
+    try {
+      const hasCamera = await QrScanner.hasCamera()
+      setHasCamera(hasCamera)
+    } catch (error) {
+      console.error('Error checking camera:', error)
+      setHasCamera(false)
+    }
+  }
+
+  const startCameraScanning = async () => {
+    try {
+      if (!videoRef.current) return
+
+      qrScannerRef.current = new QrScanner(
+        videoRef.current,
+        (result) => {
+          setScanBarcode(result.data)
+          stopCameraScanning()
+          toast.success("Código escaneado exitosamente")
+        },
+        {
+          highlightScanRegion: true,
+          highlightCodeOutline: true,
+          preferredCamera: 'environment'
+        }
+      )
+
+      await qrScannerRef.current.start()
+      setIsCameraScanning(true)
+      toast.success("Cámara iniciada - Escanea un código")
+    } catch (error) {
+      console.error('Error starting camera:', error)
+      toast.error("Error al acceder a la cámara")
+    }
+  }
+
+  const stopCameraScanning = () => {
+    if (qrScannerRef.current) {
+      qrScannerRef.current.stop()
+      qrScannerRef.current.destroy()
+      qrScannerRef.current = null
+    }
+    setIsCameraScanning(false)
+  }
+
   const formatDateTime = (dateStr: string) => {
     return new Date(dateStr).toLocaleString('es-ES', {
       day: '2-digit',
@@ -430,6 +501,56 @@ export default function MobileScanPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* Camera Options */}
+              <div className="space-y-3">
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => {
+                      setUseSimpleCamera(false)
+                      setIsBarcodeScannerActive(!isBarcodeScannerActive)
+                    }}
+                    variant={!useSimpleCamera && isBarcodeScannerActive ? "default" : "outline"}
+                    className="flex-1"
+                  >
+                    <Camera className="w-4 h-4 mr-2" />
+                    Escáner Avanzado
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setUseSimpleCamera(true)
+                      setIsBarcodeScannerActive(!isBarcodeScannerActive)
+                    }}
+                    variant={useSimpleCamera && isBarcodeScannerActive ? "default" : "outline"}
+                    className="flex-1"
+                  >
+                    <Camera className="w-4 h-4 mr-2" />
+                    Cámara Simple
+                  </Button>
+                </div>
+
+                {/* Barcode Scanner */}
+                {!useSimpleCamera && (
+                  <BarcodeScanner
+                    onScan={handleBarcodeScan}
+                    onError={(error) => {
+                      toast.error(error)
+                      // Si falla el escáner avanzado, cambiar a cámara simple
+                      setUseSimpleCamera(true)
+                    }}
+                    isActive={isBarcodeScannerActive}
+                    onToggle={() => setIsBarcodeScannerActive(!isBarcodeScannerActive)}
+                  />
+                )}
+
+                {/* Simple Camera */}
+                {useSimpleCamera && (
+                  <SimpleCamera
+                    isActive={isBarcodeScannerActive}
+                    onToggle={() => setIsBarcodeScannerActive(!isBarcodeScannerActive)}
+                  />
+                )}
+              </div>
+
               {/* Barcode Input */}
               <div className="space-y-2">
                 <Input

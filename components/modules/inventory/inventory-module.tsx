@@ -390,7 +390,7 @@ export default function InventoryModule() {
             <div className="flex items-center space-x-2">
               <Package className="w-8 h-8 text-blue-600" />
               <div>
-                <p className="text-sm font-medium text-slate-600">Total Products</p>
+                <p className="text-sm font-medium text-slate-600">Total Productos</p>
                 <p className="text-2xl font-bold text-slate-900">{stockMetrics.totalProducts}</p>
               </div>
             </div>
@@ -402,7 +402,7 @@ export default function InventoryModule() {
             <div className="flex items-center space-x-2">
               <Package className="w-8 h-8 text-green-600" />
               <div>
-                <p className="text-sm font-medium text-slate-600">Total Stock</p>
+                <p className="text-sm font-medium text-slate-600">Stock Total</p>
                 <p className="text-2xl font-bold text-slate-900">{stockMetrics.totalStock.toLocaleString()}</p>
               </div>
             </div>
@@ -414,7 +414,7 @@ export default function InventoryModule() {
             <div className="flex items-center space-x-2">
               <AlertTriangle className="w-8 h-8 text-yellow-600" />
               <div>
-                <p className="text-sm font-medium text-slate-600">Low Stock</p>
+                <p className="text-sm font-medium text-slate-600">Stock Bajo</p>
                 <p className="text-2xl font-bold text-slate-900">{stockMetrics.lowStock}</p>
               </div>
             </div>
@@ -426,7 +426,7 @@ export default function InventoryModule() {
             <div className="flex items-center space-x-2">
               <AlertTriangle className="w-8 h-8 text-red-600" />
               <div>
-                <p className="text-sm font-medium text-slate-600">Out of Stock</p>
+                <p className="text-sm font-medium text-slate-600">Sin Stock</p>
                 <p className="text-2xl font-bold text-slate-900">{stockMetrics.outOfStock}</p>
               </div>
             </div>
@@ -438,7 +438,7 @@ export default function InventoryModule() {
             <div className="flex items-center space-x-2">
               <Filter className="w-8 h-8 text-purple-600" />
               <div>
-                <p className="text-sm font-medium text-slate-600">Categories</p>
+                <p className="text-sm font-medium text-slate-600">Categorías</p>
                 <p className="text-2xl font-bold text-slate-900">{stockMetrics.categories}</p>
               </div>
             </div>
@@ -449,10 +449,10 @@ export default function InventoryModule() {
       {/* Main Content */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList>
-          <TabsTrigger value="products">Products</TabsTrigger>
-          <TabsTrigger value="import">Import Data</TabsTrigger>
-          <TabsTrigger value="history">Import History</TabsTrigger>
-          <TabsTrigger value="audit">Audit Log</TabsTrigger>
+          <TabsTrigger value="products">Productos</TabsTrigger>
+          <TabsTrigger value="import">Importar Datos</TabsTrigger>
+          <TabsTrigger value="history">Historial de Importación</TabsTrigger>
+          <TabsTrigger value="audit">Registro de Auditoría</TabsTrigger>
         </TabsList>
 
         {/* Products Tab */}
@@ -461,8 +461,8 @@ export default function InventoryModule() {
             <CardHeader>
               <div className="flex justify-between items-center">
                 <div>
-                  <CardTitle>Product Inventory</CardTitle>
-                  <CardDescription>Manage your product catalog and stock levels</CardDescription>
+                  <CardTitle>Inventario de Productos</CardTitle>
+                  <CardDescription>Gestiona tu catálogo de productos y niveles de stock</CardDescription>
                 </div>
                 <div className="flex space-x-2">
                   <Button
@@ -474,7 +474,7 @@ export default function InventoryModule() {
                     className="bg-blue-600 hover:bg-blue-700"
                   >
                     <Plus className="w-4 h-4 mr-2" />
-                    Add Product
+                    Agregar Producto
                   </Button>
                 </div>
               </div>
@@ -484,7 +484,7 @@ export default function InventoryModule() {
               <div className="flex space-x-4 mb-6">
                 <div className="flex-1">
                   <Input
-                    placeholder="Search products..."
+                    placeholder="Buscar productos..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full"
@@ -492,10 +492,10 @@ export default function InventoryModule() {
                 </div>
                 <Select value={categoryFilter} onValueChange={setCategoryFilter}>
                   <SelectTrigger className="w-48">
-                    <SelectValue placeholder="All Categories" />
+                    <SelectValue placeholder="Todas las Categorías" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Categories</SelectItem>
+                    <SelectItem value="all">Todas las Categorías</SelectItem>
                     {categories.map(category => (
                       <SelectItem key={category} value={category}>{category}</SelectItem>
                     ))}
@@ -503,12 +503,12 @@ export default function InventoryModule() {
                 </Select>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
                   <SelectTrigger className="w-32">
-                    <SelectValue placeholder="All Status" />
+                    <SelectValue placeholder="Todos los Estados" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="inactive">Inactive</SelectItem>
+                    <SelectItem value="all">Todos los Estados</SelectItem>
+                    <SelectItem value="active">Activo</SelectItem>
+                    <SelectItem value="inactive">Inactivo</SelectItem>
                     <SelectItem value="discontinued">Discontinued</SelectItem>
                   </SelectContent>
                 </Select>
@@ -519,14 +519,14 @@ export default function InventoryModule() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Code</TableHead>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Category</TableHead>
-                      <TableHead>Current Stock</TableHead>
-                      <TableHead>Min Stock</TableHead>
-                      <TableHead>Sale Price</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Actions</TableHead>
+                      <TableHead>Código</TableHead>
+                      <TableHead>Nombre</TableHead>
+                      <TableHead>Categoría</TableHead>
+                      <TableHead>Stock Actual</TableHead>
+                      <TableHead>Stock Mínimo</TableHead>
+                      <TableHead>Precio de Venta</TableHead>
+                      <TableHead>Estado</TableHead>
+                      <TableHead>Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -539,7 +539,7 @@ export default function InventoryModule() {
                     ) : (filteredProducts || []).length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={8} className="text-center py-8">
-                          No products found
+                          No se encontraron productos
                         </TableCell>
                       </TableRow>
                     ) : (
@@ -599,9 +599,9 @@ export default function InventoryModule() {
         <TabsContent value="import" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Import Inventory Data</CardTitle>
+              <CardTitle>Importar Datos de Inventario</CardTitle>
               <CardDescription>
-                Upload Excel or CSV files to bulk import/update product data
+                Sube archivos Excel o CSV para importar/actualizar datos de productos en lote
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -635,28 +635,28 @@ export default function InventoryModule() {
         <TabsContent value="history" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Import History</CardTitle>
-              <CardDescription>View past inventory imports and their results</CardDescription>
+              <CardTitle>Historial de Importación</CardTitle>
+              <CardDescription>Ver importaciones de inventario anteriores y sus resultados</CardDescription>
             </CardHeader>
             <CardContent>
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>File Name</TableHead>
-                    <TableHead>Imported By</TableHead>
-                    <TableHead>Total Rows</TableHead>
-                    <TableHead>Successful</TableHead>
-                    <TableHead>Failed</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Actions</TableHead>
+                    <TableHead>Nombre del Archivo</TableHead>
+                    <TableHead>Importado Por</TableHead>
+                    <TableHead>Total Filas</TableHead>
+                    <TableHead>Exitosos</TableHead>
+                    <TableHead>Fallidos</TableHead>
+                    <TableHead>Estado</TableHead>
+                    <TableHead>Fecha</TableHead>
+                    <TableHead>Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {(importHistory || []).length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={8} className="text-center py-8">
-                        No import history found
+                        No se encontró historial de importación
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -704,24 +704,24 @@ export default function InventoryModule() {
         <TabsContent value="audit" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Audit Activity</CardTitle>
-              <CardDescription>Track all inventory changes and who made them</CardDescription>
+              <CardTitle>Actividad de Auditoría</CardTitle>
+              <CardDescription>Rastrea todos los cambios de inventario y quién los realizó</CardDescription>
             </CardHeader>
             <CardContent>
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Action</TableHead>
-                    <TableHead>User</TableHead>
-                    <TableHead>Product</TableHead>
-                    <TableHead>Date</TableHead>
+                    <TableHead>Acción</TableHead>
+                    <TableHead>Usuario</TableHead>
+                    <TableHead>Producto</TableHead>
+                    <TableHead>Fecha</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {(auditActivity || []).length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={4} className="text-center py-8">
-                        No audit activity found
+                        No se encontró actividad de auditoría
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -798,14 +798,14 @@ export default function InventoryModule() {
       <Dialog open={showProductDialog} onOpenChange={setShowProductDialog}>
         <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingProduct ? "Edit Product" : "Add Product"}</DialogTitle>
+            <DialogTitle>{editingProduct ? "Editar Producto" : "Agregar Producto"}</DialogTitle>
             <DialogDescription>
-              {editingProduct ? "Update product information" : "Add a new product to inventory"}
+              {editingProduct ? "Actualizar información del producto" : "Agregar un nuevo producto al inventario"}
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="code">Product Code *</Label>
+              <Label htmlFor="code">Código del Producto *</Label>
               <Input
                 id="code"
                 value={productForm.code}
@@ -814,25 +814,25 @@ export default function InventoryModule() {
               />
             </div>
             <div>
-              <Label htmlFor="name">Product Name *</Label>
+              <Label htmlFor="name">Nombre del Producto *</Label>
               <Input
                 id="name"
                 value={productForm.name}
                 onChange={(e) => setProductForm(prev => ({ ...prev, name: e.target.value }))}
-                placeholder="Product name"
+                placeholder="Nombre del producto"
               />
             </div>
             <div className="col-span-2">
-              <Label htmlFor="description">Description</Label>
+              <Label htmlFor="description">Descripción</Label>
               <Textarea
                 id="description"
                 value={productForm.description}
                 onChange={(e) => setProductForm(prev => ({ ...prev, description: e.target.value }))}
-                placeholder="Product description"
+                placeholder="Descripción del producto"
               />
             </div>
             <div>
-              <Label htmlFor="category">Category</Label>
+              <Label htmlFor="category">Categoría</Label>
               <Input
                 id="category"
                 value={productForm.category}
@@ -841,7 +841,7 @@ export default function InventoryModule() {
               />
             </div>
             <div>
-              <Label htmlFor="brand">Brand</Label>
+              <Label htmlFor="brand">Marca</Label>
               <Input
                 id="brand"
                 value={productForm.brand}
@@ -850,7 +850,7 @@ export default function InventoryModule() {
               />
             </div>
             <div>
-              <Label htmlFor="model">Model</Label>
+              <Label htmlFor="model">Modelo</Label>
               <Input
                 id="model"
                 value={productForm.model}
@@ -859,7 +859,7 @@ export default function InventoryModule() {
               />
             </div>
             <div>
-              <Label htmlFor="unit_of_measure">Unit of Measure</Label>
+              <Label htmlFor="unit_of_measure">Unidad de Medida</Label>
               <Select value={productForm.unit_of_measure} onValueChange={(value) => setProductForm(prev => ({ ...prev, unit_of_measure: value }))}>
                 <SelectTrigger>
                   <SelectValue />
@@ -874,7 +874,7 @@ export default function InventoryModule() {
               </Select>
             </div>
             <div>
-              <Label htmlFor="purchase_price">Purchase Price</Label>
+              <Label htmlFor="purchase_price">Precio de Compra</Label>
               <Input
                 id="purchase_price"
                 type="number"
@@ -884,7 +884,7 @@ export default function InventoryModule() {
               />
             </div>
             <div>
-              <Label htmlFor="sale_price">Sale Price</Label>
+              <Label htmlFor="sale_price">Precio de Venta</Label>
               <Input
                 id="sale_price"
                 type="number"
@@ -894,7 +894,7 @@ export default function InventoryModule() {
               />
             </div>
             <div>
-              <Label htmlFor="current_stock">Current Stock</Label>
+              <Label htmlFor="current_stock">Stock Actual</Label>
               <Input
                 id="current_stock"
                 type="number"
@@ -903,7 +903,7 @@ export default function InventoryModule() {
               />
             </div>
             <div>
-              <Label htmlFor="min_stock">Min Stock</Label>
+              <Label htmlFor="min_stock">Stock Mínimo</Label>
               <Input
                 id="min_stock"
                 type="number"
@@ -912,7 +912,7 @@ export default function InventoryModule() {
               />
             </div>
             <div>
-              <Label htmlFor="max_stock">Max Stock</Label>
+              <Label htmlFor="max_stock">Stock Máximo</Label>
               <Input
                 id="max_stock"
                 type="number"
@@ -921,7 +921,7 @@ export default function InventoryModule() {
               />
             </div>
             <div>
-              <Label htmlFor="location">Location</Label>
+              <Label htmlFor="location">Ubicación</Label>
               <Input
                 id="location"
                 value={productForm.location}
@@ -930,7 +930,7 @@ export default function InventoryModule() {
               />
             </div>
             <div>
-              <Label htmlFor="barcode">Barcode</Label>
+              <Label htmlFor="barcode">Código de Barras</Label>
               <Input
                 id="barcode"
                 value={productForm.barcode}
@@ -939,7 +939,7 @@ export default function InventoryModule() {
               />
             </div>
             <div>
-              <Label htmlFor="weight">Weight (kg)</Label>
+              <Label htmlFor="weight">Peso (kg)</Label>
               <Input
                 id="weight"
                 type="number"
@@ -949,7 +949,7 @@ export default function InventoryModule() {
               />
             </div>
             <div>
-              <Label htmlFor="dimensions">Dimensions</Label>
+              <Label htmlFor="dimensions">Dimensiones</Label>
               <Input
                 id="dimensions"
                 value={productForm.dimensions}
@@ -960,10 +960,10 @@ export default function InventoryModule() {
           </div>
           <div className="flex justify-end space-x-2 mt-6">
             <Button variant="outline" onClick={() => setShowProductDialog(false)}>
-              Cancel
+              Cancelar
             </Button>
             <Button onClick={handleSaveProduct}>
-              {editingProduct ? "Update" : "Create"}
+              {editingProduct ? "Actualizar" : "Crear"}
             </Button>
           </div>
         </DialogContent>
