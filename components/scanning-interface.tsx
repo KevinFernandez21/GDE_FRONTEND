@@ -14,7 +14,10 @@ import {
   XCircle,
   AlertTriangle,
   BarChart3,
-  Activity
+  Activity,
+  Copy,
+  Settings,
+  Search
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -86,7 +89,7 @@ export default function ScanningInterface() {
   } | null>(null)
   
   // Hook para detectar la IP del dispositivo
-  const { deviceIP, isLoading: isDetectingIP, error: ipError } = useDeviceIP()
+  const { deviceIP, isLoading: isDetectingIP, error: ipError, isProduction } = useDeviceIP()
   
   // Estado para IP manual y opciones alternativas
   const [manualIP, setManualIP] = useState("")
@@ -486,6 +489,12 @@ export default function ScanningInterface() {
   }
 
   const getMobileUrl = (sessionToken: string) => {
+    // Si estamos en producción, usar la URL de producción
+    if (isProduction) {
+      return `https://v0-mejora-de-interfaz-mu.vercel.app/mobile-scan/${sessionToken}`
+    }
+    
+    // En desarrollo, usar la lógica anterior
     const port = window.location.port || '3000'
     
     // Use manual IP if set, otherwise use detected IP, otherwise fallback to current hostname
@@ -980,62 +989,93 @@ export default function ScanningInterface() {
               </Button>
             </div>
           ) : (
-            <div className="space-y-4">
-              <div className="flex justify-center">
-                <img
-                  src={generateQRCode(getMobileUrl(currentSession.session_token))}
-                  alt="QR Code"
-                  className="border rounded-lg"
-                  width={250}
-                  height={250}
-                />
+            <div className="space-y-6">
+              {/* Título del modal */}
+              <div className="text-center">
+                <h3 className="text-lg font-semibold text-gray-900">Código QR de Sesión</h3>
+                <p className="text-sm text-gray-600 mt-1">Escanea este código QR con tu móvil para comenzar a pistolar</p>
               </div>
-              <Alert>
-                <AlertDescription className="text-center">
-                  <strong>URL Móvil:</strong><br />
-                  <code className="text-xs break-all">{getMobileUrl(currentSession.session_token)}</code>
-                  {deviceIP && !manualIP && (
-                    <div className="mt-2 text-xs text-green-600">
-                      ✓ IP del dispositivo detectada: {deviceIP}
+
+              {/* QR Code con mejor diseño */}
+              <div className="flex justify-center">
+                <div className="bg-white p-6 rounded-xl shadow-lg border-2 border-gray-100">
+                  <img
+                    src={generateQRCode(getMobileUrl(currentSession.session_token))}
+                    alt="QR Code"
+                    className="rounded-lg"
+                    width={280}
+                    height={280}
+                  />
+                </div>
+              </div>
+
+              {/* URL Móvil con mejor diseño */}
+              <div className="bg-gray-50 rounded-lg p-4 border">
+                <div className="text-center">
+                  <p className="text-sm font-medium text-gray-700 mb-2">URL Móvil:</p>
+                  <div className="bg-white rounded-md p-3 border">
+                    <code className="text-xs break-all text-gray-800 font-mono">
+                      {getMobileUrl(currentSession.session_token)}
+                    </code>
+                  </div>
+                  
+                  {/* Estados de IP */}
+                  {isProduction && (
+                    <div className="mt-3 flex items-center justify-center text-xs text-blue-600">
+                      <span className="mr-1">🌐</span>
+                      Modo producción: Usando URL de Vercel
                     </div>
                   )}
-                  {manualIP && (
-                    <div className="mt-2 text-xs text-blue-600">
-                      ✓ IP manual configurada: {manualIP}
+                  {!isProduction && deviceIP && !manualIP && (
+                    <div className="mt-3 flex items-center justify-center text-xs text-green-600">
+                      <span className="mr-1">✓</span>
+                      IP del dispositivo detectada: <span className="font-semibold ml-1">{deviceIP}</span>
                     </div>
                   )}
-                  {isDetectingIP && !manualIP && (
-                    <div className="mt-2 text-xs text-yellow-600">
-                      🔍 Detectando IP del dispositivo...
+                  {!isProduction && manualIP && (
+                    <div className="mt-3 flex items-center justify-center text-xs text-blue-600">
+                      <span className="mr-1">✓</span>
+                      IP manual configurada: <span className="font-semibold ml-1">{manualIP}</span>
                     </div>
                   )}
-                  {ipError && !manualIP && (
-                    <div className="mt-2 text-xs text-red-600">
-                      ⚠️ No se pudo detectar la IP automáticamente
+                  {!isProduction && isDetectingIP && !manualIP && (
+                    <div className="mt-3 flex items-center justify-center text-xs text-yellow-600">
+                      <span className="mr-1">🔍</span>
+                      Detectando IP del dispositivo...
+                    </div>
+                  )}
+                  {!isProduction && ipError && !manualIP && (
+                    <div className="mt-3 flex items-center justify-center text-xs text-red-600">
+                      <span className="mr-1">⚠️</span>
+                      No se pudo detectar la IP automáticamente
                     </div>
                   )}
                   {urlConnectivity === false && (
-                    <div className="mt-2 text-xs text-red-600">
-                      ❌ La URL no es accesible desde el móvil
+                    <div className="mt-3 flex items-center justify-center text-xs text-red-600">
+                      <span className="mr-1">❌</span>
+                      La URL no es accesible desde el móvil
                     </div>
                   )}
                   {urlConnectivity === true && (
-                    <div className="mt-2 text-xs text-green-600">
-                      ✅ URL accesible
+                    <div className="mt-3 flex items-center justify-center text-xs text-green-600">
+                      <span className="mr-1">✅</span>
+                      URL accesible
                     </div>
                   )}
-                </AlertDescription>
-              </Alert>
-              <div className="space-y-2">
-                <div className="flex gap-2">
+                </div>
+              </div>
+              {/* Botones de acción con mejor diseño */}
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
                   <Button
                     variant="outline"
                     onClick={() => {
                       navigator.clipboard.writeText(getMobileUrl(currentSession.session_token))
                       toast.success("URL copiada al portapapeles")
                     }}
-                    className="flex-1"
+                    className="h-10 bg-white hover:bg-gray-50 border-gray-300 text-gray-700"
                   >
+                    <Copy className="w-4 h-4 mr-2" />
                     Copiar URL
                   </Button>
                   <Button
@@ -1046,42 +1086,46 @@ export default function ScanningInterface() {
                       link.download = `qr-session-${currentSession.session_name}.png`
                       link.click()
                     }}
-                    className="flex-1"
+                    className="h-10 bg-white hover:bg-gray-50 border-gray-300 text-gray-700"
                   >
                     <Download className="w-4 h-4 mr-2" />
                     Descargar QR
                   </Button>
                 </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => setShowIPOptions(!showIPOptions)}
-                    className="flex-1"
-                  >
-                    ⚙️ Configurar IP
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={async () => {
-                      setUrlConnectivity(null)
-                      const url = getMobileUrl(currentSession.session_token)
-                      const isAccessible = await testUrlConnectivity(url)
-                      setUrlConnectivity(isAccessible)
-                      if (isAccessible) {
-                        toast.success("URL accesible desde el móvil")
-                      } else {
-                        toast.error("URL no accesible. Verifica la configuración de red")
-                      }
-                    }}
-                    className="flex-1"
-                  >
-                    🔍 Probar URL
-                  </Button>
-                </div>
+                {!isProduction && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowIPOptions(!showIPOptions)}
+                      className="h-10 bg-white hover:bg-gray-50 border-gray-300 text-gray-700"
+                    >
+                      <Settings className="w-4 h-4 mr-2" />
+                      Configurar IP
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={async () => {
+                        setUrlConnectivity(null)
+                        const url = getMobileUrl(currentSession.session_token)
+                        const isAccessible = await testUrlConnectivity(url)
+                        setUrlConnectivity(isAccessible)
+                        if (isAccessible) {
+                          toast.success("URL accesible desde el móvil")
+                        } else {
+                          toast.error("URL no accesible. Verifica la configuración de red")
+                        }
+                      }}
+                      className="h-10 bg-white hover:bg-gray-50 border-gray-300 text-gray-700"
+                    >
+                      <Search className="w-4 h-4 mr-2" />
+                      Probar URL
+                    </Button>
+                  </div>
+                )}
               </div>
               
               {/* Panel de configuración de IP */}
-              {showIPOptions && (
+              {!isProduction && showIPOptions && (
                 <div className="mt-4 p-4 border rounded-lg bg-gray-50">
                   <h4 className="font-medium mb-3">Configuración de IP</h4>
                   <div className="space-y-3">

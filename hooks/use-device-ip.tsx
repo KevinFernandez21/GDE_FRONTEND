@@ -4,12 +4,14 @@ interface DeviceIPHook {
   deviceIP: string | null
   isLoading: boolean
   error: string | null
+  isProduction: boolean
 }
 
 export function useDeviceIP(): DeviceIPHook {
   const [deviceIP, setDeviceIP] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [isProduction, setIsProduction] = useState(false)
   
   // IP configurada en las variables de entorno
   const configuredIP = process.env.NEXT_PUBLIC_DEVICE_IP
@@ -19,6 +21,20 @@ export function useDeviceIP(): DeviceIPHook {
       try {
         setIsLoading(true)
         setError(null)
+
+        // Detectar si estamos en producción
+        const isProd = window.location.hostname.includes('vercel.app') || 
+                       window.location.hostname.includes('netlify.app') ||
+                       process.env.NODE_ENV === 'production'
+        
+        setIsProduction(isProd)
+
+        if (isProd) {
+          // En producción, no necesitamos detectar IP
+          setDeviceIP(null)
+          setIsLoading(false)
+          return
+        }
 
         // Try to get IP from WebRTC
         const pc = new RTCPeerConnection({
@@ -80,5 +96,5 @@ export function useDeviceIP(): DeviceIPHook {
     detectDeviceIP()
   }, [])
 
-  return { deviceIP, isLoading, error }
+  return { deviceIP, isLoading, error, isProduction }
 }

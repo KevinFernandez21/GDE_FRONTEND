@@ -42,7 +42,18 @@ interface BarcodeScan {
   product_info: any
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+// Configuración de API para desarrollo y producción
+const getApiBaseUrl = () => {
+  // En producción (Vercel), usar la URL del backend de Vercel
+  if (typeof window !== 'undefined' && window.location.hostname.includes('vercel.app')) {
+    return 'https://qde-backend-25253959.vercel.app'
+  }
+  
+  // En desarrollo, usar la variable de entorno o localhost
+  return process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
+}
+
+const API_BASE_URL = getApiBaseUrl()
 
 export default function MobileScanPage() {
   const params = useParams()
@@ -87,16 +98,28 @@ export default function MobileScanPage() {
 
   const loadSessionData = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/scanning/mobile/${token}`)
+      console.log('🔍 Intentando conectar con backend:', `${API_BASE_URL}/api/v1/scanning/mobile/${token}`)
+      
+      const response = await fetch(`${API_BASE_URL}/api/v1/scanning/mobile/${token}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        // Agregar timeout para evitar esperas largas
+        signal: AbortSignal.timeout(5000)
+      })
 
       if (response.ok) {
         const data = await response.json()
         setSession(data.session_info)
         setRecentScans(data.recent_scans || [])
         setError(null)
+        console.log('✅ Datos de sesión cargados correctamente')
       } else {
-        const errorData = await response.json()
-        console.log('Backend error, using mock data:', errorData.detail)
+        throw new Error(`Backend responded with status: ${response.status}`)
+      }
+    } catch (error) {
+      console.log('⚠️ Backend no disponible, usando modo demo:', error)
         
         // Usar datos mock como fallback
         const mockSession: ScanSession = {
@@ -193,6 +216,8 @@ export default function MobileScanPage() {
 
     setIsSubmitting(true)
     try {
+      console.log('📤 Enviando escaneo al backend:', scanBarcode.trim())
+      
       const response = await fetch(`${API_BASE_URL}/api/v1/scanning/scan`, {
         method: 'POST',
         headers: {
@@ -204,7 +229,9 @@ export default function MobileScanPage() {
           scan_type: scanType,
           location: scanLocation.trim() || null,
           notes: scanNotes.trim() || null
-        })
+        }),
+        // Agregar timeout
+        signal: AbortSignal.timeout(5000)
       })
 
       if (response.ok) {
@@ -220,14 +247,18 @@ export default function MobileScanPage() {
         } : null)
 
         toast.success(`${scanType === 'guide' ? 'Guía' : scanType === 'product' ? 'Producto' : 'Paquete'} registrado`)
+        console.log('✅ Escaneo registrado en backend')
 
         // Auto-focus back to barcode input
         if (barcodeInputRef.current) {
           barcodeInputRef.current.focus()
         }
       } else {
-        // Modo demo - simular escaneo exitoso
-        console.log('Backend error, simulating scan in demo mode')
+        throw new Error(`Backend responded with status: ${response.status}`)
+      }
+    } catch (error) {
+      // Modo demo - simular escaneo exitoso
+      console.log('⚠️ Backend no disponible, registrando en modo demo:', error)
         
         const mockScan: BarcodeScan = {
           id: `scan-${Date.now()}`,
@@ -253,6 +284,7 @@ export default function MobileScanPage() {
         } : null)
 
         toast.success(`${scanType === 'guide' ? 'Guía' : scanType === 'product' ? 'Producto' : 'Paquete'} registrado (Modo Demo)`)
+        console.log('✅ Escaneo registrado en modo demo')
 
         // Auto-focus back to barcode input
         if (barcodeInputRef.current) {

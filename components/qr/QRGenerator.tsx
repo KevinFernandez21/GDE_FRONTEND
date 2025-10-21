@@ -24,7 +24,7 @@ export default function QRGenerator() {
   const [loading, setLoading] = useState(false)
   
   // Hook para detectar la IP del dispositivo
-  const { deviceIP, isLoading: isDetectingIP, error: ipError } = useDeviceIP()
+  const { deviceIP, isLoading: isDetectingIP, error: ipError, isProduction } = useDeviceIP()
 
   const generateQR = async () => {
     if (!guideId.trim()) {
@@ -34,15 +34,21 @@ export default function QRGenerator() {
 
     setLoading(true)
     try {
-      // Use detected device IP if available, otherwise fallback to current hostname
-      const port = window.location.port || '3000'
-      const hostname = deviceIP || window.location.hostname
-      
       let url: string
-      if (deviceIP && deviceIP !== '127.0.0.1') {
-        url = `http://${deviceIP}:${port}/scan/${guideId}`
+      
+      // Si estamos en producción, usar la URL de producción
+      if (isProduction) {
+        url = `https://v0-mejora-de-interfaz-mu.vercel.app/scan/${guideId}`
       } else {
-        url = `${window.location.protocol}//${hostname}:${port}/scan/${guideId}`
+        // En desarrollo, usar la lógica anterior
+        const port = window.location.port || '3000'
+        const hostname = deviceIP || window.location.hostname
+        
+        if (deviceIP && deviceIP !== '127.0.0.1') {
+          url = `http://${deviceIP}:${port}/scan/${guideId}`
+        } else {
+          url = `${window.location.protocol}//${hostname}:${port}/scan/${guideId}`
+        }
       }
       
       setScanUrl(url)
@@ -174,17 +180,22 @@ export default function QRGenerator() {
                   <ExternalLink className="h-4 w-4" />
                 </Button>
               </div>
-              {deviceIP && (
+              {isProduction && (
+                <div className="text-xs text-blue-400">
+                  🌐 Modo producción: Usando URL de Vercel
+                </div>
+              )}
+              {!isProduction && deviceIP && (
                 <div className="text-xs text-green-400">
                   ✓ IP del dispositivo detectada: {deviceIP}
                 </div>
               )}
-              {isDetectingIP && (
+              {!isProduction && isDetectingIP && (
                 <div className="text-xs text-yellow-400">
                   🔍 Detectando IP del dispositivo...
                 </div>
               )}
-              {ipError && (
+              {!isProduction && ipError && (
                 <div className="text-xs text-red-400">
                   ⚠️ No se pudo detectar la IP automáticamente
                 </div>
