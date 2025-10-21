@@ -38,7 +38,6 @@ interface BarcodeScan {
   scanned_by: string
   scanned_at: string
   processed: boolean
-  guide_info: any
   product_info: any
 }
 
@@ -105,7 +104,6 @@ export default function MobileScanPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        // Agregar timeout para evitar esperas largas
         signal: AbortSignal.timeout(5000)
       })
 
@@ -121,56 +119,7 @@ export default function MobileScanPage() {
     } catch (error) {
       console.log('⚠️ Backend no disponible, usando modo demo:', error)
         
-        // Usar datos mock como fallback
-        const mockSession: ScanSession = {
-          id: `session-${token}`,
-          session_token: token,
-          session_name: "Sesión Demo",
-          description: "Sesión de demostración (Modo Demo)",
-          status: "active",
-          created_by: "demo-user",
-          created_at: new Date(Date.now() - 3600000).toISOString(),
-          expires_at: new Date(Date.now() + 7 * 3600000).toISOString(),
-          scans_count: 5,
-          last_scan_at: new Date(Date.now() - 300000).toISOString()
-        }
-
-        const mockScans: BarcodeScan[] = [
-          {
-            id: "scan-1",
-            session_id: mockSession.id,
-            barcode: "G00045",
-            scan_type: "guide",
-            location: "Guayaquil",
-            notes: "Guía de entrada",
-            scanned_by: "demo-user",
-            scanned_at: new Date(Date.now() - 300000).toISOString(),
-            processed: true,
-            product_info: null
-          },
-          {
-            id: "scan-2",
-            session_id: mockSession.id,
-            barcode: "G00046",
-            scan_type: "guide",
-            location: "Guayaquil",
-            notes: "Guía de salida",
-            scanned_by: "demo-user",
-            scanned_at: new Date(Date.now() - 600000).toISOString(),
-            processed: true,
-            product_info: null
-          }
-        ]
-
-        setSession(mockSession)
-        setRecentScans(mockScans)
-        setError(null)
-        toast.success("Modo Demo activado - Backend no disponible")
-      }
-    } catch (error) {
-      console.error('Error loading session:', error)
-      
-      // Usar datos mock como fallback en caso de error de red
+      // Usar datos mock como fallback
       const mockSession: ScanSession = {
         id: `session-${token}`,
         session_token: token,
@@ -196,13 +145,25 @@ export default function MobileScanPage() {
           scanned_at: new Date(Date.now() - 300000).toISOString(),
           processed: true,
           product_info: null
+        },
+        {
+          id: "scan-2",
+          session_id: mockSession.id,
+          barcode: "G00046",
+          scan_type: "guide",
+          location: "Guayaquil",
+          notes: "Guía de salida",
+          scanned_by: "demo-user",
+          scanned_at: new Date(Date.now() - 600000).toISOString(),
+          processed: true,
+          product_info: null
         }
       ]
 
       setSession(mockSession)
       setRecentScans(mockScans)
       setError(null)
-      toast.success("Modo Demo activado - Sin conexión al servidor")
+      toast.success("Modo Demo activado - Funcionando sin backend")
     } finally {
       setIsLoading(false)
     }
@@ -230,13 +191,12 @@ export default function MobileScanPage() {
           location: scanLocation.trim() || null,
           notes: scanNotes.trim() || null
         }),
-        // Agregar timeout
         signal: AbortSignal.timeout(5000)
       })
 
       if (response.ok) {
         const scanResult = await response.json()
-        setRecentScans(prev => [scanResult, ...prev.slice(0, 9)]) // Keep last 10 scans
+        setRecentScans(prev => [scanResult, ...prev.slice(0, 9)])
         setScanBarcode("")
         setScanLocation("")
         setScanNotes("")
@@ -249,7 +209,6 @@ export default function MobileScanPage() {
         toast.success(`${scanType === 'guide' ? 'Guía' : scanType === 'product' ? 'Producto' : 'Paquete'} registrado`)
         console.log('✅ Escaneo registrado en backend')
 
-        // Auto-focus back to barcode input
         if (barcodeInputRef.current) {
           barcodeInputRef.current.focus()
         }
@@ -257,44 +216,8 @@ export default function MobileScanPage() {
         throw new Error(`Backend responded with status: ${response.status}`)
       }
     } catch (error) {
-      // Modo demo - simular escaneo exitoso
       console.log('⚠️ Backend no disponible, registrando en modo demo:', error)
         
-        const mockScan: BarcodeScan = {
-          id: `scan-${Date.now()}`,
-          session_id: session.id,
-          barcode: scanBarcode.trim(),
-          scan_type: scanType,
-          location: scanLocation.trim() || "Guayaquil",
-          notes: scanNotes.trim() || null,
-          scanned_by: "demo-user",
-          scanned_at: new Date().toISOString(),
-          processed: true,
-          product_info: null
-        }
-
-        setRecentScans(prev => [mockScan, ...prev.slice(0, 9)]) // Keep last 10 scans
-        setScanBarcode("")
-        setScanLocation("")
-        setScanNotes("")
-        setSession(prev => prev ? {
-          ...prev,
-          scans_count: prev.scans_count + 1,
-          last_scan_at: mockScan.scanned_at
-        } : null)
-
-        toast.success(`${scanType === 'guide' ? 'Guía' : scanType === 'product' ? 'Producto' : 'Paquete'} registrado (Modo Demo)`)
-        console.log('✅ Escaneo registrado en modo demo')
-
-        // Auto-focus back to barcode input
-        if (barcodeInputRef.current) {
-          barcodeInputRef.current.focus()
-        }
-      }
-    } catch (error) {
-      console.error('Error submitting scan:', error)
-      
-      // Modo demo - simular escaneo exitoso en caso de error de red
       const mockScan: BarcodeScan = {
         id: `scan-${Date.now()}`,
         session_id: session.id,
@@ -308,7 +231,7 @@ export default function MobileScanPage() {
         product_info: null
       }
 
-      setRecentScans(prev => [mockScan, ...prev.slice(0, 9)]) // Keep last 10 scans
+      setRecentScans(prev => [mockScan, ...prev.slice(0, 9)])
       setScanBarcode("")
       setScanLocation("")
       setScanNotes("")
@@ -319,6 +242,11 @@ export default function MobileScanPage() {
       } : null)
 
       toast.success(`${scanType === 'guide' ? 'Guía' : scanType === 'product' ? 'Producto' : 'Paquete'} registrado (Modo Demo)`)
+      console.log('✅ Escaneo registrado en modo demo')
+
+      if (barcodeInputRef.current) {
+        barcodeInputRef.current.focus()
+      }
     } finally {
       setIsSubmitting(false)
     }
@@ -366,7 +294,6 @@ export default function MobileScanPage() {
 
       await qrScannerRef.current.start()
       setIsCameraScanning(true)
-      toast.success("Cámara iniciada - Escanea un código")
     } catch (error) {
       console.error('Error starting camera:', error)
       toast.error("Error al acceder a la cámara")
@@ -382,301 +309,282 @@ export default function MobileScanPage() {
     setIsCameraScanning(false)
   }
 
-  const formatDateTime = (dateStr: string) => {
-    return new Date(dateStr).toLocaleString('es-ES', {
-      day: '2-digit',
-      month: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-  }
-
-  const getStatusBadge = (status: string) => {
-    const variants = {
-      active: "default",
-      paused: "secondary",
-      completed: "outline",
-      expired: "destructive"
-    } as const
-
-    const labels = {
-      active: "Activa",
-      paused: "Pausada",
-      completed: "Completada",
-      expired: "Expirada"
-    }
-
-    return <Badge variant={variants[status as keyof typeof variants]}>{labels[status as keyof typeof labels]}</Badge>
-  }
-
-  const getScanTypeIcon = (type: string) => {
-    switch (type) {
-      case 'guide':
-        return <FileText className="w-4 h-4" />
-      case 'product':
-        return <Package className="w-4 h-4" />
-      case 'package':
-        return <Package className="w-4 h-4" />
-      default:
-        return <Scan className="w-4 h-4" />
-    }
-  }
-
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-        <div className="text-center space-y-4">
-          <RefreshCw className="w-8 h-8 animate-spin mx-auto" />
-          <p>Cargando sesión de pistoleo...</p>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-4 text-blue-600" />
+          <p className="text-gray-600">Cargando sesión de pistoleo...</p>
         </div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-red-50 to-red-100 p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <CardTitle className="flex items-center justify-center gap-2 text-red-600">
-              <X className="w-6 h-6" />
-              Error de Sesión
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-            <Button onClick={loadSessionData} className="w-full">
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Reintentar
-            </Button>
-          </CardContent>
-        </Card>
       </div>
     )
   }
 
   if (!session) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <CardTitle>Sesión no encontrada</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-center text-muted-foreground">
-              La sesión de pistoleo no está disponible.
-            </p>
-          </CardContent>
-        </Card>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <X className="w-8 h-8 mx-auto mb-4 text-red-600" />
+          <p className="text-gray-600">Sesión no encontrada</p>
+          <Button 
+            onClick={() => window.history.back()} 
+            className="mt-4"
+            variant="outline"
+          >
+            <ChevronLeft className="w-4 h-4 mr-2" />
+            Volver
+          </Button>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-white shadow-sm border-b sticky top-0 z-10">
-        <div className="px-4 py-3">
+      <div className="bg-white shadow-sm border-b">
+        <div className="max-w-md mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Scan className="w-6 h-6 text-blue-600" />
-              <div>
-                <h1 className="font-semibold text-lg">Pistoleo Móvil</h1>
-                <p className="text-sm text-muted-foreground">{session.session_name}</p>
-              </div>
+            <div>
+              <h1 className="text-xl font-semibold text-gray-900">Pistoleo Móvil</h1>
+              <p className="text-sm text-gray-600">{session.session_name || "Sesión Demo"}</p>
             </div>
-            {getStatusBadge(session.status)}
+            <Button 
+              onClick={() => window.history.back()} 
+              variant="outline" 
+              size="sm"
+            >
+              <ChevronLeft className="w-4 h-4 mr-2" />
+              Volver
+            </Button>
           </div>
         </div>
       </div>
 
-      <div className="p-4 space-y-4">
+      <div className="max-w-md mx-auto px-4 py-6 space-y-6">
         {/* Session Info */}
         <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">Escaneos realizados:</span>
-                  <Badge variant="outline">{session.scans_count}</Badge>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Expira: {formatDateTime(session.expires_at)}
-                </p>
-              </div>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg">Escanear Código</CardTitle>
+            <CardDescription>
+              Escanea códigos de barras o ingrésalos manualmente
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Camera Options */}
+            <div className="grid grid-cols-2 gap-2">
               <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowDetails(!showDetails)}
+                variant={isBarcodeScannerActive ? "default" : "outline"}
+                onClick={() => {
+                  setIsBarcodeScannerActive(!isBarcodeScannerActive)
+                  setUseSimpleCamera(false)
+                }}
+                className="flex flex-col gap-1 h-auto p-3"
               >
-                {showDetails ? "Ocultar" : "Detalles"}
+                <Scan className="w-5 h-5" />
+                <span className="text-xs">Escáner Avanzado</span>
+              </Button>
+              <Button
+                variant={useSimpleCamera ? "default" : "outline"}
+                onClick={() => {
+                  setUseSimpleCamera(!useSimpleCamera)
+                  setIsBarcodeScannerActive(false)
+                }}
+                className="flex flex-col gap-1 h-auto p-3"
+              >
+                <Camera className="w-5 h-5" />
+                <span className="text-xs">Cámara Simple</span>
               </Button>
             </div>
 
-            {showDetails && session.description && (
-              <div className="mt-3 pt-3 border-t">
-                <p className="text-sm">{session.description}</p>
+            {/* Camera Controls */}
+            {(isBarcodeScannerActive || useSimpleCamera) && (
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsBarcodeScannerActive(false)
+                    setUseSimpleCamera(false)
+                  }}
+                  className="flex-1"
+                >
+                  <CameraOff className="w-4 h-4 mr-2" />
+                  Desactivar
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    // Cambiar cámara
+                    toast.info("Cambiando cámara...")
+                  }}
+                  className="flex-1"
+                >
+                  <Camera className="w-4 h-4 mr-2" />
+                  Cambiar Cámara
+                </Button>
+              </div>
+            )}
+
+            {/* Camera Feed */}
+            {isBarcodeScannerActive && (
+              <BarcodeScanner
+                onScan={handleBarcodeScan}
+                isActive={isBarcodeScannerActive}
+                onToggle={() => setIsBarcodeScannerActive(!isBarcodeScannerActive)}
+              />
+            )}
+
+            {useSimpleCamera && (
+              <SimpleCamera
+                onToggle={() => setUseSimpleCamera(!useSimpleCamera)}
+                isActive={useSimpleCamera}
+              />
+            )}
+
+            {/* Manual Input */}
+            {!isBarcodeScannerActive && !useSimpleCamera && (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Escanea o escribe el código de barras...
+                  </label>
+                  <Input
+                    ref={barcodeInputRef}
+                    value={scanBarcode}
+                    onChange={(e) => setScanBarcode(e.target.value)}
+                    placeholder="Ej: G00045, 1234567890..."
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        submitScan()
+                      }
+                    }}
+                    className="text-lg font-mono"
+                    autoComplete="off"
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                  />
+                </div>
+
+                {/* Quick Options */}
+                <div className="grid grid-cols-3 gap-2">
+                  <Button
+                    variant={scanType === 'guide' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setScanType('guide')}
+                    className="flex flex-col gap-1 h-auto p-2"
+                  >
+                    <FileText className="w-4 h-4" />
+                    <span className="text-xs">Guía</span>
+                  </Button>
+                  <Button
+                    variant={scanType === 'product' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setScanType('product')}
+                    className="flex flex-col gap-1 h-auto p-2"
+                  >
+                    <Package className="w-4 h-4" />
+                    <span className="text-xs">Producto</span>
+                  </Button>
+                  <Button
+                    variant={scanType === 'package' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setScanType('package')}
+                    className="flex flex-col gap-1 h-auto p-2"
+                  >
+                    <Package className="w-4 h-4" />
+                    <span className="text-xs">Paquete</span>
+                  </Button>
+                </div>
+
+                {/* Location and Notes */}
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Ubicación (Opcional)
+                    </label>
+                    <Input
+                      value={scanLocation}
+                      onChange={(e) => setScanLocation(e.target.value)}
+                      placeholder="Ej: Guayaquil, Quito..."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Notas (Opcional)
+                    </label>
+                    <Textarea
+                      value={scanNotes}
+                      onChange={(e) => setScanNotes(e.target.value)}
+                      placeholder="Notas adicionales..."
+                      rows={2}
+                    />
+                  </div>
+                </div>
+
+                {/* Submit Button */}
+                <Button
+                  onClick={submitScan}
+                  disabled={isSubmitting || !scanBarcode.trim()}
+                  className="w-full"
+                  size="lg"
+                >
+                  {isSubmitting ? (
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4 mr-2" />
+                  )}
+                  Registrar Escaneo
+                </Button>
               </div>
             )}
           </CardContent>
         </Card>
 
-        {/* Scanning Interface */}
-        {session.status === 'active' && (
+        {/* Recent Scans */}
+        {recentScans.length > 0 && (
           <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Scan className="w-5 h-5" />
-                Escanear Código
-              </CardTitle>
+            <CardHeader>
+              <CardTitle className="text-lg">Escaneos Recientes</CardTitle>
+              <CardDescription>
+                Últimos {recentScans.length} escaneos registrados
+              </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Camera Options */}
+            <CardContent>
               <div className="space-y-3">
-                <div className="flex gap-2">
-                  <Button
-                    onClick={() => {
-                      setUseSimpleCamera(false)
-                      setIsBarcodeScannerActive(!isBarcodeScannerActive)
-                    }}
-                    variant={!useSimpleCamera && isBarcodeScannerActive ? "default" : "outline"}
-                    className="flex-1"
-                  >
-                    <Camera className="w-4 h-4 mr-2" />
-                    Escáner Avanzado
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      setUseSimpleCamera(true)
-                      setIsBarcodeScannerActive(!isBarcodeScannerActive)
-                    }}
-                    variant={useSimpleCamera && isBarcodeScannerActive ? "default" : "outline"}
-                    className="flex-1"
-                  >
-                    <Camera className="w-4 h-4 mr-2" />
-                    Cámara Simple
-                  </Button>
-                </div>
-
-                {/* Barcode Scanner */}
-                {!useSimpleCamera && (
-                  <BarcodeScanner
-                    onScan={handleBarcodeScan}
-                    onError={(error) => {
-                      toast.error(error)
-                      // Si falla el escáner avanzado, cambiar a cámara simple
-                      setUseSimpleCamera(true)
-                    }}
-                    isActive={isBarcodeScannerActive}
-                    onToggle={() => setIsBarcodeScannerActive(!isBarcodeScannerActive)}
-                  />
-                )}
-
-                {/* Simple Camera */}
-                {useSimpleCamera && (
-                  <SimpleCamera
-                    isActive={isBarcodeScannerActive}
-                    onToggle={() => setIsBarcodeScannerActive(!isBarcodeScannerActive)}
-                  />
-                )}
+                {recentScans.slice(0, 5).map((scan) => (
+                  <div key={scan.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <Badge variant={scan.scan_type === 'guide' ? 'default' : 'secondary'}>
+                          {scan.scan_type === 'guide' ? 'Guía' : scan.scan_type === 'product' ? 'Producto' : 'Paquete'}
+                        </Badge>
+                        <span className="font-mono text-sm">{scan.barcode}</span>
+                      </div>
+                      {scan.location && (
+                        <div className="flex items-center gap-1 mt-1">
+                          <MapPin className="w-3 h-3 text-gray-500" />
+                          <span className="text-xs text-gray-600">{scan.location}</span>
+                        </div>
+                      )}
+                      <div className="text-xs text-gray-500 mt-1">
+                        {new Date(scan.scanned_at).toLocaleString()}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {scan.processed ? (
+                        <Check className="w-4 h-4 text-green-600" />
+                      ) : (
+                        <RefreshCw className="w-4 h-4 text-yellow-600 animate-spin" />
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
-
-              {/* Barcode Input */}
-              <div className="space-y-2">
-                <Input
-                  ref={barcodeInputRef}
-                  placeholder="Escanea o escribe el código de barras..."
-                  value={scanBarcode}
-                  onChange={(e) => setScanBarcode(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && scanBarcode.trim()) {
-                      submitScan()
-                    }
-                  }}
-                  className="text-lg font-mono"
-                  autoComplete="off"
-                  autoCapitalize="off"
-                  autoCorrect="off"
-                />
-              </div>
-
-              {/* Quick Options */}
-              <div className="grid grid-cols-3 gap-2">
-                <Button
-                  variant={scanType === 'guide' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setScanType('guide')}
-                  className="flex flex-col gap-1 h-auto p-2"
-                >
-                  <FileText className="w-4 h-4" />
-                  <span className="text-xs">Guía</span>
-                </Button>
-                <Button
-                  variant={scanType === 'product' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setScanType('product')}
-                  className="flex flex-col gap-1 h-auto p-2"
-                >
-                  <Package className="w-4 h-4" />
-                  <span className="text-xs">Producto</span>
-                </Button>
-                <Button
-                  variant={scanType === 'package' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setScanType('package')}
-                  className="flex flex-col gap-1 h-auto p-2"
-                >
-                  <Package className="w-4 h-4" />
-                  <span className="text-xs">Paquete</span>
-                </Button>
-              </div>
-
-              {/* Optional Fields */}
-              <div className="space-y-3">
-                <div className="space-y-1">
-                  <label className="text-sm font-medium flex items-center gap-1">
-                    <MapPin className="w-3 h-3" />
-                    Ubicación
-                  </label>
-                  <Input
-                    placeholder="Ej: Almacén A-1"
-                    value={scanLocation}
-                    onChange={(e) => setScanLocation(e.target.value)}
-                    className="text-sm"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-sm font-medium">Notas</label>
-                  <Textarea
-                    placeholder="Observaciones..."
-                    value={scanNotes}
-                    onChange={(e) => setScanNotes(e.target.value)}
-                    rows={2}
-                    className="text-sm"
-                  />
-                </div>
-              </div>
-
-              {/* Submit Button */}
-              <Button
-                onClick={submitScan}
-                disabled={isSubmitting || !scanBarcode.trim()}
-                className="w-full"
-                size="lg"
-              >
-                {isSubmitting ? (
-                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Send className="w-4 h-4 mr-2" />
-                )}
-                Registrar Escaneo
-              </Button>
             </CardContent>
           </Card>
         )}
 
+        {/* Session Status */}
         {session.status === 'paused' && (
           <Alert>
             <AlertDescription>
@@ -691,45 +599,6 @@ export default function MobileScanPage() {
               Esta sesión de pistoleo ha finalizado. No se pueden realizar más escaneos.
             </AlertDescription>
           </Alert>
-        )}
-
-        {/* Recent Scans */}
-        {recentScans.length > 0 && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Últimos Escaneos</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {recentScans.slice(0, 5).map((scan) => (
-                  <div
-                    key={scan.id}
-                    className="flex items-center justify-between p-3 bg-accent/50 rounded-lg"
-                  >
-                    <div className="flex items-center gap-3">
-                      {getScanTypeIcon(scan.scan_type)}
-                      <div>
-                        <p className="font-mono text-sm font-medium">{scan.barcode}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {formatDateTime(scan.scanned_at)}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {scan.location && (
-                        <Badge variant="outline" className="text-xs">
-                          {scan.location}
-                        </Badge>
-                      )}
-                      <Badge variant={scan.processed ? "default" : "secondary"} className="text-xs">
-                        {scan.processed ? <Check className="w-3 h-3" /> : "..."}
-                      </Badge>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
         )}
       </div>
     </div>

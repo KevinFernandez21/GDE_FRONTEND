@@ -36,7 +36,7 @@ export default function CameraPermissionsHelp({ onRetry }: CameraPermissionsHelp
             </div>
             <div className="flex items-start gap-2">
               <span className="font-medium text-blue-600">2.</span>
-              <span>Haz clic en el ícono y selecciona "Permitir" o "Allow"</span>
+              <span>Haz clic en el ícono y selecciona &quot;Permitir&quot; o &quot;Allow&quot;</span>
             </div>
             <div className="flex items-start gap-2">
               <span className="font-medium text-blue-600">3.</span>
