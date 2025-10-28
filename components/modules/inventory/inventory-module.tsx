@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
 import { apiClient } from "@/lib/api"
 import { useAuth } from "@/contexts/auth-context"
+import InventoryImportWizard from "./inventory-import-wizard"
 
 interface Product {
   id: string
@@ -42,12 +43,14 @@ interface Product {
 
 interface ImportHistory {
   id: string
-  original_filename: string
+  file_name: string
   total_rows: number
   successful_rows: number
   failed_rows: number
   status: string
   created_at: string
+  started_at?: string
+  completed_at?: string
   username: string
   full_name: string
 }
@@ -109,12 +112,14 @@ export default function InventoryModule() {
   const loadProducts = useCallback(async () => {
     try {
       setIsLoading(true)
-      const response = await apiClient.request<Product[]>("/inventory/products", {
+      const response = await apiClient.request<{items: Product[], total: number, page: number, size: number}>("/inventory/products", {
         method: "GET"
       })
 
       if (response.data) {
-        setProducts(Array.isArray(response.data) ? response.data : [])
+        // Handle paginated response
+        const items = response.data.items || []
+        setProducts(Array.isArray(items) ? items : [])
       } else {
         setProducts([])
         if (response.error) {
@@ -382,7 +387,7 @@ export default function InventoryModule() {
   }, [products])
 
   return (
-    <div className="space-y-6">
+    <div className="p-6 space-y-6">
       {/* Metrics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card>
@@ -558,7 +563,7 @@ export default function InventoryModule() {
                             </span>
                           </TableCell>
                           <TableCell>{product.min_stock}</TableCell>
-                          <TableCell>${product.sale_price.toFixed(2)}</TableCell>
+                          <TableCell>${Number(product.sale_price || 0).toFixed(2)}</TableCell>
                           <TableCell>
                             <Badge variant={product.status === "active" ? "default" : "secondary"}>
                               {product.status}
@@ -662,11 +667,11 @@ export default function InventoryModule() {
                   ) : (
                     (importHistory || []).map((import_) => (
                       <TableRow key={import_.id}>
-                        <TableCell className="font-medium">{import_.original_filename}</TableCell>
+                        <TableCell className="font-medium">{import_.file_name}</TableCell>
                         <TableCell>{import_.full_name || import_.username}</TableCell>
-                        <TableCell>{import_.total_rows}</TableCell>
-                        <TableCell className="text-green-600">{import_.successful_rows}</TableCell>
-                        <TableCell className="text-red-600">{import_.failed_rows}</TableCell>
+                        <TableCell>{import_.total_rows || 0}</TableCell>
+                        <TableCell className="text-green-600">{import_.successful_rows || 0}</TableCell>
+                        <TableCell className="text-red-600">{import_.failed_rows || 0}</TableCell>
                         <TableCell>
                           <Badge variant={
                             import_.status === "completed" ? "default" :
@@ -760,37 +765,24 @@ export default function InventoryModule() {
         </TabsContent>
       </Tabs>
 
-      {/* Import Dialog */}
+      {/* Import Dialog - Enhanced */}
       <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-6xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Import Inventory File</DialogTitle>
+            <DialogTitle>Importar Productos al Inventario</DialogTitle>
             <DialogDescription>
-              Select an Excel or CSV file to import product data
+              Asistente de importación con validación avanzada
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="file">File</Label>
-              <Input
-                id="file"
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                onChange={(e) => setImportFile(e.target.files?.[0] || null)}
-              />
-            </div>
-            <div className="flex justify-end space-x-2">
-              <Button variant="outline" onClick={() => setShowImportDialog(false)}>
-                Cancel
-              </Button>
-              <Button
-                onClick={handleFileImport}
-                disabled={!importFile || isImporting}
-              >
-                {isImporting ? "Importing..." : "Import"}
-              </Button>
-            </div>
-          </div>
+          <InventoryImportWizard
+            onImportComplete={() => {
+              setShowImportDialog(false)
+              loadProducts()
+              loadImportHistory()
+              loadAuditActivity()
+            }}
+            onCancel={() => setShowImportDialog(false)}
+          />
         </DialogContent>
       </Dialog>
 

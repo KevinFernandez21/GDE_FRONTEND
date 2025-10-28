@@ -55,7 +55,7 @@ export default function GuideMasterUpload({ isOpen, onClose, onSuccess }: GuideM
     setUploadProgress(10)
 
     try {
-      const token = localStorage.getItem('auth_token')
+      const token = localStorage.getItem('gde_token')
       if (!token) {
         toast.error('No se encontró token de autenticación')
         return

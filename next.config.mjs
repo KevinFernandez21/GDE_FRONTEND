@@ -14,8 +14,8 @@ const nextConfig = {
   
   // Environment variables
   env: {
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/',
-    NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080/api/v1',
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/',
+    NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000/api/v1',
     NEXT_PUBLIC_APP_NAME: process.env.NEXT_PUBLIC_APP_NAME || 'GDE - Sistema de Gestión',
     NEXT_PUBLIC_APP_VERSION: process.env.NEXT_PUBLIC_APP_VERSION || '2.0.0',
   },
@@ -48,7 +48,7 @@ const nextConfig = {
     // En desarrollo local o producción, usa NEXT_PUBLIC_API_BASE_URL
     const backendUrl = process.env.INTERNAL_API_BASE_URL
       || process.env.NEXT_PUBLIC_API_BASE_URL
-      || 'http://localhost:8080/api/v1';
+      || 'http://localhost:8000/api/v1';
 
     console.log('[Next.js Rewrites] Backend URL:', backendUrl);
 

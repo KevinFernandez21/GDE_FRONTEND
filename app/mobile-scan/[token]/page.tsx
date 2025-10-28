@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { useParams } from "next/navigation"
-import { Scan, RefreshCw, Check, X, ChevronLeft, MapPin, FileText, Package, Send, Camera, CameraOff } from "lucide-react"
+import { Scan, RefreshCw, Check, X, ChevronLeft, MapPin, FileText, Package, Send, Camera, CameraOff, ArrowUp, ArrowDown, QrCode } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -14,6 +14,7 @@ import { toast } from "sonner"
 import QrScanner from 'qr-scanner'
 import BarcodeScanner from '@/components/barcode-scanner'
 import SimpleCamera from '@/components/simple-camera'
+import { useDeviceIP } from '@/hooks/use-device-ip'
 
 interface ScanSession {
   id: string
@@ -39,17 +40,21 @@ interface BarcodeScan {
   scanned_at: string
   processed: boolean
   product_info: any
+  movement_type?: "entrada" | "salida"
+  guide_info?: {
+    guide_number: string
+    fecha: string
+    cliente: string
+    estado: string
+  }
 }
 
 // Configuración de API para desarrollo y producción
 const getApiBaseUrl = () => {
-  // En producción (Vercel), usar la URL del backend de Vercel
-  if (typeof window !== 'undefined' && window.location.hostname.includes('vercel.app')) {
-    return 'https://qde-backend-25253959.vercel.app'
-  }
-  
-  // En desarrollo, usar la variable de entorno o localhost
-  return process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
+  // Prefer a full API base including /api/v1 to avoid double slashes
+  if (process.env.NEXT_PUBLIC_API_BASE_URL) return process.env.NEXT_PUBLIC_API_BASE_URL
+  if (process.env.NEXT_PUBLIC_API_URL) return `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')}/api/v1`
+  return "http://localhost:8000/api/v1"
 }
 
 const API_BASE_URL = getApiBaseUrl()
@@ -57,6 +62,7 @@ const API_BASE_URL = getApiBaseUrl()
 export default function MobileScanPage() {
   const params = useParams()
   const token = params.token as string
+  const { deviceIP, isLoading: ipLoading, isProduction } = useDeviceIP()
 
   const [session, setSession] = useState<ScanSession | null>(null)
   const [recentScans, setRecentScans] = useState<BarcodeScan[]>([])
@@ -73,6 +79,8 @@ export default function MobileScanPage() {
   const [hasCamera, setHasCamera] = useState(false)
   const [isBarcodeScannerActive, setIsBarcodeScannerActive] = useState(false)
   const [useSimpleCamera, setUseSimpleCamera] = useState(false)
+  const [movementType, setMovementType] = useState<"entrada" | "salida">("entrada")
+  const [scannedGuides, setScannedGuides] = useState<Set<string>>(new Set())
 
   const barcodeInputRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -97,9 +105,9 @@ export default function MobileScanPage() {
 
   const loadSessionData = async () => {
     try {
-      console.log('🔍 Intentando conectar con backend:', `${API_BASE_URL}/api/v1/scanning/mobile/${token}`)
+      console.log('🔍 Intentando conectar con backend:', `${API_BASE_URL}/scanning/mobile/${token}`)
       
-      const response = await fetch(`${API_BASE_URL}/api/v1/scanning/mobile/${token}`, {
+      const response = await fetch(`${API_BASE_URL}/scanning/mobile/${token}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -175,11 +183,17 @@ export default function MobileScanPage() {
       return
     }
 
+    // Validar duplicados para guías
+    if (scanType === 'guide' && scannedGuides.has(scanBarcode.trim())) {
+      toast.error("Esta guía ya ha sido escaneada en esta sesión")
+      return
+    }
+
     setIsSubmitting(true)
     try {
       console.log('📤 Enviando escaneo al backend:', scanBarcode.trim())
       
-      const response = await fetch(`${API_BASE_URL}/api/v1/scanning/scan`, {
+      const response = await fetch(`${API_BASE_URL}/scanning/scan`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -189,7 +203,8 @@ export default function MobileScanPage() {
           barcode: scanBarcode.trim(),
           scan_type: scanType,
           location: scanLocation.trim() || null,
-          notes: scanNotes.trim() || null
+          notes: scanNotes.trim() || null,
+          movement_type: scanType === 'guide' ? movementType : null
         }),
         signal: AbortSignal.timeout(5000)
       })
@@ -197,6 +212,12 @@ export default function MobileScanPage() {
       if (response.ok) {
         const scanResult = await response.json()
         setRecentScans(prev => [scanResult, ...prev.slice(0, 9)])
+        
+        // Agregar a guías escaneadas si es una guía
+        if (scanType === 'guide') {
+          setScannedGuides(prev => new Set([...prev, scanBarcode.trim()]))
+        }
+        
         setScanBarcode("")
         setScanLocation("")
         setScanNotes("")
@@ -206,7 +227,8 @@ export default function MobileScanPage() {
           last_scan_at: scanResult.scanned_at
         } : null)
 
-        toast.success(`${scanType === 'guide' ? 'Guía' : scanType === 'product' ? 'Producto' : 'Paquete'} registrado`)
+        const movementText = scanType === 'guide' ? ` (${movementType})` : ''
+        toast.success(`${scanType === 'guide' ? 'Guía' : scanType === 'product' ? 'Producto' : 'Paquete'} registrado${movementText}`)
         console.log('✅ Escaneo registrado en backend')
 
         if (barcodeInputRef.current) {
@@ -348,6 +370,11 @@ export default function MobileScanPage() {
             <div>
               <h1 className="text-xl font-semibold text-gray-900">Pistoleo Móvil</h1>
               <p className="text-sm text-gray-600">{session.session_name || "Sesión Demo"}</p>
+              {!ipLoading && deviceIP && (
+                <p className="text-xs text-gray-500">
+                  {isProduction ? `URL: ${deviceIP}` : `IP: ${deviceIP}`}
+                </p>
+              )}
             </div>
             <Button 
               onClick={() => window.history.back()} 
@@ -362,8 +389,8 @@ export default function MobileScanPage() {
       </div>
 
       <div className="max-w-md mx-auto px-4 py-6 space-y-6">
-        {/* Session Info */}
-        <Card>
+        {/* Escanear Código Card */}
+        <Card className="bg-white">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg">Escanear Código</CardTitle>
             <CardDescription>
@@ -371,10 +398,10 @@ export default function MobileScanPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Camera Options */}
+            {/* Scanner Options */}
             <div className="grid grid-cols-2 gap-2">
               <Button
-                variant={isBarcodeScannerActive ? "default" : "outline"}
+                variant="outline"
                 onClick={() => {
                   setIsBarcodeScannerActive(!isBarcodeScannerActive)
                   setUseSimpleCamera(false)
@@ -385,7 +412,7 @@ export default function MobileScanPage() {
                 <span className="text-xs">Escáner Avanzado</span>
               </Button>
               <Button
-                variant={useSimpleCamera ? "default" : "outline"}
+                variant="outline"
                 onClick={() => {
                   setUseSimpleCamera(!useSimpleCamera)
                   setIsBarcodeScannerActive(false)
@@ -396,34 +423,6 @@ export default function MobileScanPage() {
                 <span className="text-xs">Cámara Simple</span>
               </Button>
             </div>
-
-            {/* Camera Controls */}
-            {(isBarcodeScannerActive || useSimpleCamera) && (
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setIsBarcodeScannerActive(false)
-                    setUseSimpleCamera(false)
-                  }}
-                  className="flex-1"
-                >
-                  <CameraOff className="w-4 h-4 mr-2" />
-                  Desactivar
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    // Cambiar cámara
-                    toast.info("Cambiando cámara...")
-                  }}
-                  className="flex-1"
-                >
-                  <Camera className="w-4 h-4 mr-2" />
-                  Cambiar Cámara
-                </Button>
-              </div>
-            )}
 
             {/* Camera Feed */}
             {isBarcodeScannerActive && (
@@ -458,14 +457,14 @@ export default function MobileScanPage() {
                         submitScan()
                       }
                     }}
-                    className="text-lg font-mono"
+                    className="text-lg font-mono border-blue-500 focus:border-blue-600"
                     autoComplete="off"
                     autoCapitalize="off"
                     autoCorrect="off"
                   />
                 </div>
 
-                {/* Quick Options */}
+                {/* Type Selection */}
                 <div className="grid grid-cols-3 gap-2">
                   <Button
                     variant={scanType === 'guide' ? 'default' : 'outline'}
@@ -496,6 +495,41 @@ export default function MobileScanPage() {
                   </Button>
                 </div>
 
+                {/* Movement Type for Guides */}
+                {scanType === 'guide' && (
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Tipo de Movimiento
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        variant={movementType === 'entrada' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setMovementType('entrada')}
+                        className="flex items-center gap-2 h-auto p-3"
+                      >
+                        <ArrowUp className="w-4 h-4 text-green-600" />
+                        <span>Entrada</span>
+                      </Button>
+                      <Button
+                        variant={movementType === 'salida' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setMovementType('salida')}
+                        className="flex items-center gap-2 h-auto p-3"
+                      >
+                        <ArrowDown className="w-4 h-4 text-red-600" />
+                        <span>Salida</span>
+                      </Button>
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      {movementType === 'entrada' 
+                        ? 'Suma al inventario' 
+                        : 'Resta del inventario'
+                      }
+                    </p>
+                  </div>
+                )}
+
                 {/* Location and Notes */}
                 <div className="space-y-3">
                   <div>
@@ -525,7 +559,7 @@ export default function MobileScanPage() {
                 <Button
                   onClick={submitScan}
                   disabled={isSubmitting || !scanBarcode.trim()}
-                  className="w-full"
+                  className="w-full bg-blue-600 hover:bg-blue-700"
                   size="lg"
                 >
                   {isSubmitting ? (
@@ -540,9 +574,9 @@ export default function MobileScanPage() {
           </CardContent>
         </Card>
 
-        {/* Recent Scans */}
+        {/* Escaneos Recientes Card */}
         {recentScans.length > 0 && (
-          <Card>
+          <Card className="bg-white">
             <CardHeader>
               <CardTitle className="text-lg">Escaneos Recientes</CardTitle>
               <CardDescription>
@@ -551,14 +585,14 @@ export default function MobileScanPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {recentScans.slice(0, 5).map((scan) => (
+                {recentScans.slice(0, 2).map((scan) => (
                   <div key={scan.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
-                        <Badge variant={scan.scan_type === 'guide' ? 'default' : 'secondary'}>
+                        <Badge variant="default" className="bg-blue-600">
                           {scan.scan_type === 'guide' ? 'Guía' : scan.scan_type === 'product' ? 'Producto' : 'Paquete'}
                         </Badge>
-                        <span className="font-mono text-sm">{scan.barcode}</span>
+                        <span className="font-mono text-sm font-semibold">{scan.barcode}</span>
                       </div>
                       {scan.location && (
                         <div className="flex items-center gap-1 mt-1">
@@ -571,11 +605,7 @@ export default function MobileScanPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
-                      {scan.processed ? (
-                        <Check className="w-4 h-4 text-green-600" />
-                      ) : (
-                        <RefreshCw className="w-4 h-4 text-yellow-600 animate-spin" />
-                      )}
+                      <Check className="w-4 h-4 text-green-600" />
                     </div>
                   </div>
                 ))}

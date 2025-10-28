@@ -214,10 +214,6 @@ export default function RealtimeDashboard() {
     )
   }
 
-  const stockHealthPercentage = metrics.stock_metrics.total_productos > 0
-    ? (metrics.stock_metrics.productos_ok / metrics.stock_metrics.total_productos) * 100
-    : 0
-
   const guideCompletionPercentage = metrics.guide_tracking.total_guias > 0
     ? (metrics.guide_tracking.guias_escaneadas / metrics.guide_tracking.total_guias) * 100
     : 0
@@ -288,10 +284,6 @@ export default function RealtimeDashboard() {
               <div className="text-2xl font-bold">{formatNumber(metrics.stock_metrics.total_productos)}</div>
               <p className="text-xs text-muted-foreground mt-1">
                 Stock total: {formatNumber(metrics.stock_metrics.stock_total)} unidades
-              </p>
-              <Progress value={stockHealthPercentage} className="mt-2" />
-              <p className="text-xs text-muted-foreground mt-1">
-                {stockHealthPercentage.toFixed(1)}% con stock saludable
               </p>
             </CardContent>
           </Card>

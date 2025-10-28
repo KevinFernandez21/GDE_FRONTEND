@@ -43,6 +43,7 @@ export default function BulkGuideImportModal({ isOpen, onClose }: BulkGuideImpor
   const [isProcessing, setIsProcessing] = useState(false)
   const [columnMappings, setColumnMappings] = useState<ColumnMapping[]>([])
   const [activeTab, setActiveTab] = useState("upload")
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null)
 
   // Columnas recomendadas para guías de despacho
   const recommendedColumns = [
@@ -125,12 +126,13 @@ export default function BulkGuideImportModal({ isOpen, onClose }: BulkGuideImpor
     return sampleData
   }
 
-  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file) {
       setIsProcessing(true)
       setFileName(file.name)
       setFileError(null)
+      setUploadedFile(file)
 
       // Validar tipo de archivo
       if (!file.name.endsWith(".csv") && !file.name.endsWith(".xlsx") && !file.name.endsWith(".xls")) {
@@ -142,13 +144,52 @@ export default function BulkGuideImportModal({ isOpen, onClose }: BulkGuideImpor
         return
       }
 
-      // Simular procesamiento del archivo
-      setTimeout(() => {
-        const simulatedData = simulateGuideCSVData(file.name)
-        const columns = Object.keys(simulatedData[0])
+      try {
+        // Llamar a la API real para validar el archivo
+        const formData = new FormData()
+        formData.append("file", file)
+        
+        const response = await fetch(`/api/v1/guide-master/import/validate`, {
+          method: "POST",
+          body: formData,
+          credentials: "include",
+        })
+
+        if (!response.ok) {
+          throw new Error("Error al validar el archivo")
+        }
+
+        const result = await response.json()
+        
+        console.log("Backend response:", result)
+        
+        // Check using the same pattern as inventory (result.success instead of result.status)
+        if (!result.success) {
+          console.error("Validation failed:", result.message)
+          setFileError(result.message || "Error al validar el archivo")
+          setIsProcessing(false)
+          return
+        }
+
+        // Procesar respuesta exitosa
+        const validationData = result.data
+        console.log("Validation data:", validationData)
+        
+        // Additional check: if data is not valid for import, show error
+        if (!validationData?.valid_for_import) {
+          const errorMsg = validationData?.error || "El archivo contiene errores de validación"
+          console.error("File not valid for import:", errorMsg)
+          setFileError(errorMsg)
+          setIsProcessing(false)
+          return
+        }
+        
+        const columns = validationData.preview_data && validationData.preview_data.length > 0 
+          ? Object.keys(validationData.preview_data[0])
+          : []
 
         setDetectedColumns(columns)
-        setPreviewData(simulatedData)
+        setPreviewData(validationData.preview_data || [])
 
         // Crear mapeos automáticos
         const mappings: ColumnMapping[] = columns.map((col) => {
@@ -167,14 +208,23 @@ export default function BulkGuideImportModal({ isOpen, onClose }: BulkGuideImpor
 
         setColumnMappings(mappings)
         setIsProcessing(false)
+        console.log("✅ Validation successful! Changing tab to preview...")
+        console.log("Preview data length:", validationData.preview_data?.length)
+        console.log("Detected columns:", columns)
         setActiveTab("preview")
-      }, 1500) // Simular tiempo de procesamiento
+        console.log("✅ Tab should now be 'preview'")
+      } catch (error) {
+        console.error("Error validating file:", error)
+        setFileError(error instanceof Error ? error.message : "Error al procesar el archivo")
+        setIsProcessing(false)
+      }
     } else {
       setFileName(null)
       setDetectedColumns([])
       setPreviewData([])
       setFileError(null)
       setColumnMappings([])
+      setUploadedFile(null)
     }
   }
 
@@ -202,16 +252,54 @@ export default function BulkGuideImportModal({ isOpen, onClose }: BulkGuideImpor
     }
   }
 
-  const handleImport = () => {
+  const handleImport = async () => {
     const validation = getValidationSummary()
     if (!validation.isValid) {
       alert("Por favor, mapea todas las columnas requeridas antes de importar.")
       return
     }
 
-    // Aquí iría la lógica real de importación de guías
-    alert(`Importación exitosa: ${previewData.length} guías de despacho procesadas.`)
-    onClose()
+    setIsProcessing(true)
+    
+    try {
+      // Usar el archivo guardado
+      if (!uploadedFile) {
+        setFileError("No se encontró el archivo")
+        setIsProcessing(false)
+        return
+      }
+
+      const formData = new FormData()
+      formData.append("file", uploadedFile)
+      
+      const response = await fetch(`/api/v1/guide-master/import/import`, {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      })
+
+      if (!response.ok) {
+        throw new Error("Error al importar el archivo")
+      }
+
+      const result = await response.json()
+      
+      // Check using the same pattern as inventory
+      if (!result.success) {
+        setFileError(result.message || "Error al importar el archivo")
+        setIsProcessing(false)
+        return
+      }
+
+      // Show success message
+      alert(result.message || `Importación exitosa: ${previewData.length} guías procesadas.`)
+      onClose()
+      setIsProcessing(false)
+    } catch (error) {
+      console.error("Error importing file:", error)
+      setFileError(error instanceof Error ? error.message : "Error al importar el archivo")
+      setIsProcessing(false)
+    }
   }
 
   const resetModal = () => {
@@ -221,6 +309,7 @@ export default function BulkGuideImportModal({ isOpen, onClose }: BulkGuideImpor
     setFileError(null)
     setColumnMappings([])
     setActiveTab("upload")
+    setUploadedFile(null)
   }
 
   const validation = getValidationSummary()

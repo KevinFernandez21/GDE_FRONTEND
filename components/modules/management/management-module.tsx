@@ -11,17 +11,25 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Progress } from "@/components/ui/progress"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { toast } from "sonner"
 import { apiClient } from "@/lib/api"
 import BulkFinancialImportModal from "@/components/bulk-financial-import-modal"
 import CostModal from "@/components/modals/cost-modal"
 import ExpenseModal from "@/components/modals/expense-modal"
 import CapitalModal from "@/components/modals/capital-modal"
+import UniversalImportWizard from "@/components/shared/universal-import-wizard"
+import ExportButton from "@/components/shared/export-button"
 
 export default function ManagementModule() {
   const [showCostImportModal, setShowCostImportModal] = useState(false)
   const [showExpenseImportModal, setShowExpenseImportModal] = useState(false)
   const [showCapitalImportModal, setShowCapitalImportModal] = useState(false)
+
+  // Universal Import Wizards
+  const [showCostsImport, setShowCostsImport] = useState(false)
+  const [showExpensesImport, setShowExpensesImport] = useState(false)
+  const [showCapitalImport, setShowCapitalImport] = useState(false)
 
   // Helper function to safely format numbers
   const formatCurrency = (value: any, options?: Intl.NumberFormatOptions) => {
@@ -251,7 +259,7 @@ export default function ManagementModule() {
 
   const handleSaveCost = async (costData: any) => {
     try {
-      const token = localStorage.getItem('auth_token')
+      const token = localStorage.getItem('gde_token')
       if (!token) {
         toast.error('No se encontró token de autenticación')
         return
@@ -282,7 +290,7 @@ export default function ManagementModule() {
 
   const handleSaveExpense = async (expenseData: any) => {
     try {
-      const token = localStorage.getItem('auth_token')
+      const token = localStorage.getItem('gde_token')
       if (!token) {
         toast.error('No se encontró token de autenticación')
         return
@@ -313,7 +321,7 @@ export default function ManagementModule() {
 
   const handleSaveCapital = async (capitalData: any) => {
     try {
-      const token = localStorage.getItem('auth_token')
+      const token = localStorage.getItem('gde_token')
       if (!token) {
         toast.error('No se encontró token de autenticación')
         return
@@ -518,10 +526,16 @@ export default function ManagementModule() {
               </div>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setShowCostImportModal(true)}>
+              <Button variant="outline" onClick={() => setShowCostsImport(true)}>
                 <Upload className="w-4 h-4 mr-2" />
-                Importar Excel
+                Importar Costos
               </Button>
+              <ExportButton
+                exportEndpoint="/accounting/costs/export"
+                filename="costos"
+                variant="outline"
+                showLabel={false}
+              />
               <Button onClick={() => handleAddRow('costos')}>
                 <Plus className="w-4 h-4 mr-2" />
                 Nuevo Costo
@@ -667,10 +681,16 @@ export default function ManagementModule() {
               </Select>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setShowExpenseImportModal(true)}>
+              <Button variant="outline" onClick={() => setShowExpensesImport(true)}>
                 <Upload className="w-4 h-4 mr-2" />
-                Importar Excel
+                Importar Gastos
               </Button>
+              <ExportButton
+                exportEndpoint="/accounting/expenses/export"
+                filename="gastos"
+                variant="outline"
+                showLabel={false}
+              />
               <Button onClick={() => handleAddRow('gastos')}>
                 <Plus className="w-4 h-4 mr-2" />
                 Nuevo Gasto
@@ -761,14 +781,16 @@ export default function ManagementModule() {
           <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
             <h3 className="text-lg font-semibold">Control de Capital y Financiamiento</h3>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setShowCapitalImportModal(true)}>
+              <Button variant="outline" onClick={() => setShowCapitalImport(true)}>
                 <Upload className="w-4 h-4 mr-2" />
-                Importar Excel
+                Importar Capital
               </Button>
-              <Button variant="outline">
-                <Download className="w-4 h-4 mr-2" />
-                Exportar Balance
-              </Button>
+              <ExportButton
+                exportEndpoint="/accounting/capital/export"
+                filename="capital"
+                variant="outline"
+                showLabel={false}
+              />
               <Button onClick={() => handleAddRow('capital')}>
                 <Plus className="w-4 h-4 mr-2" />
                 Nuevo Movimiento
@@ -818,8 +840,7 @@ export default function ManagementModule() {
                     <span className="font-bold text-green-600">{formatCurrency(kpiFinancieros.patrimonio)}</span>
                   </div>
                 </div>
-                <Progress value={kpiFinancieros.ratioEndeudamiento} className="mt-4" />
-                <p className="text-sm text-muted-foreground">Ratio de Endeudamiento: {formatNumber(kpiFinancieros.ratioEndeudamiento, {minimumFractionDigits: 1, maximumFractionDigits: 1})}%</p>
+                <p className="text-sm text-muted-foreground mt-4">Ratio de Endeudamiento: {formatNumber(kpiFinancieros.ratioEndeudamiento, {minimumFractionDigits: 1, maximumFractionDigits: 1})}%</p>
               </CardContent>
             </Card>
           </div>
@@ -917,7 +938,6 @@ export default function ManagementModule() {
                   {formatCurrency(kpiFinancieros.utilidadBruta)}
                 </div>
                 <p className="text-sm text-muted-foreground">Ventas - Costo de Ventas</p>
-                <Progress value={75} className="mt-2" />
               </CardContent>
             </Card>
 
@@ -931,7 +951,6 @@ export default function ManagementModule() {
               <CardContent>
                 <div className="text-3xl font-bold text-blue-600 mb-2">{kpiFinancieros.margenBruto}%</div>
                 <p className="text-sm text-muted-foreground">Utilidad Bruta / Ventas</p>
-                <Progress value={kpiFinancieros.margenBruto} className="mt-2" />
               </CardContent>
             </Card>
 
@@ -945,7 +964,6 @@ export default function ManagementModule() {
               <CardContent>
                 <div className="text-3xl font-bold text-purple-600 mb-2">{kpiFinancieros.rotacionInventario}x</div>
                 <p className="text-sm text-muted-foreground">Veces por año</p>
-                <Progress value={42} className="mt-2" />
               </CardContent>
             </Card>
           </div>
@@ -985,25 +1003,22 @@ export default function ManagementModule() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <div className="flex justify-between mb-2">
-                    <span>Costo de Ventas</span>
-                    <span>{formatPercentage(kpiFinancieros.porc_costos_ventas)}%</span>
+                  <div className="flex justify-between p-3 bg-red-50 rounded-lg">
+                    <span className="font-medium">Costo de Ventas</span>
+                    <span className="font-bold text-red-600">{formatPercentage(kpiFinancieros.porc_costos_ventas)}%</span>
                   </div>
-                  <Progress value={kpiFinancieros.porc_costos_ventas} />
                 </div>
                 <div>
-                  <div className="flex justify-between mb-2">
-                    <span>Gastos Administrativos</span>
-                    <span>{formatPercentage(kpiFinancieros.porc_gastos_admin)}%</span>
+                  <div className="flex justify-between p-3 bg-orange-50 rounded-lg">
+                    <span className="font-medium">Gastos Administrativos</span>
+                    <span className="font-bold text-orange-600">{formatPercentage(kpiFinancieros.porc_gastos_admin)}%</span>
                   </div>
-                  <Progress value={kpiFinancieros.porc_gastos_admin} />
                 </div>
                 <div>
-                  <div className="flex justify-between mb-2">
-                    <span>Utilidad Neta</span>
-                    <span>{formatPercentage(kpiFinancieros.porc_utilidad_neta)}%</span>
+                  <div className="flex justify-between p-3 bg-green-50 rounded-lg">
+                    <span className="font-medium">Utilidad Neta</span>
+                    <span className="font-bold text-green-600">{formatPercentage(kpiFinancieros.porc_utilidad_neta)}%</span>
                   </div>
-                  <Progress value={Math.max(0, kpiFinancieros.porc_utilidad_neta)} />
                 </div>
               </CardContent>
             </Card>
@@ -1049,6 +1064,83 @@ export default function ManagementModule() {
         onSave={handleSaveCapital}
         editingCapital={editingItem}
       />
+
+      {/* Universal Import Wizards */}
+      
+      {/* Import Costos */}
+      <Dialog open={showCostsImport} onOpenChange={setShowCostsImport}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Importar Costos</DialogTitle>
+            <DialogDescription>
+              Importe costos de producción y operaciones con validación automática
+            </DialogDescription>
+          </DialogHeader>
+          <UniversalImportWizard
+            validateEndpoint="/accounting/costs/import/validate"
+            importEndpoint="/accounting/costs/import/import"
+            importType="costs"
+            moduleName="Costos"
+            onSuccess={() => {
+              setShowCostsImport(false)
+              fetchManagementData()
+              toast.success("Costos importados exitosamente")
+            }}
+            onCancel={() => setShowCostsImport(false)}
+            allowUpdate={true}
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Gastos */}
+      <Dialog open={showExpensesImport} onOpenChange={setShowExpensesImport}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Importar Gastos</DialogTitle>
+            <DialogDescription>
+              Importe gastos operativos y administrativos con validación automática
+            </DialogDescription>
+          </DialogHeader>
+          <UniversalImportWizard
+            validateEndpoint="/accounting/expenses/import/validate"
+            importEndpoint="/accounting/expenses/import/import"
+            importType="expenses"
+            moduleName="Gastos"
+            onSuccess={() => {
+              setShowExpensesImport(false)
+              fetchManagementData()
+              toast.success("Gastos importados exitosamente")
+            }}
+            onCancel={() => setShowExpensesImport(false)}
+            allowUpdate={true}
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Capital */}
+      <Dialog open={showCapitalImport} onOpenChange={setShowCapitalImport}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Importar Movimientos de Capital</DialogTitle>
+            <DialogDescription>
+              Importe inversiones y movimientos de capital con validación automática
+            </DialogDescription>
+          </DialogHeader>
+          <UniversalImportWizard
+            validateEndpoint="/accounting/capital/import/validate"
+            importEndpoint="/accounting/capital/import/import"
+            importType="capital"
+            moduleName="Capital"
+            onSuccess={() => {
+              setShowCapitalImport(false)
+              fetchManagementData()
+              toast.success("Movimientos de capital importados exitosamente")
+            }}
+            onCancel={() => setShowCapitalImport(false)}
+            allowUpdate={false}
+          />
+        </DialogContent>
+      </Dialog>
         </>
       )}
     </div>

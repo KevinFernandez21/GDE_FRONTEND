@@ -11,12 +11,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox"
 import { Progress } from "@/components/ui/progress"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import BulkImportModal from "@/components/bulk-import-modal"
 import BulkGuideImportModal from "@/components/bulk-guide-import-modal"
 import ScanningInterface from "@/components/scanning-interface"
 import GuideModal from "@/components/modals/guide-modal"
 import KardexModal from "@/components/modals/kardex-modal"
-import GuideMasterUpload from "@/components/guide-master-upload"
+import UniversalImportWizard from "@/components/shared/universal-import-wizard"
+import ExportButton from "@/components/shared/export-button"
 import { useState, useCallback, useEffect } from "react"
 import { toast } from "sonner"
 
@@ -36,7 +38,10 @@ interface TrackingSummary {
 export default function TraceabilityModule() {
   const [showImportModal, setShowImportModal] = useState(false)
   const [showGuideImportModal, setShowGuideImportModal] = useState(false)
-  const [showGuideMasterUpload, setShowGuideMasterUpload] = useState(false)
+
+  // Universal Import Wizards
+  const [showDeliveryGuideImport, setShowDeliveryGuideImport] = useState(false)
+  const [showKardexImport, setShowKardexImport] = useState(false)
 
   // New modals state
   const [showGuideModal, setShowGuideModal] = useState(false)
@@ -57,7 +62,7 @@ export default function TraceabilityModule() {
 
   const fetchGuiasDespacho = async () => {
     try {
-      const token = localStorage.getItem('auth_token')
+      const token = localStorage.getItem('gde_token')
       if (!token) {
         toast.error('No se encontró token de autenticación')
         return
@@ -85,7 +90,7 @@ export default function TraceabilityModule() {
 
   const fetchKardexData = async () => {
     try {
-      const token = localStorage.getItem('auth_token')
+      const token = localStorage.getItem('gde_token')
       if (!token) {
         toast.error('No se encontró token de autenticación')
         return
@@ -113,7 +118,7 @@ export default function TraceabilityModule() {
 
   const fetchGuideMasterData = async () => {
     try {
-      const token = localStorage.getItem('auth_token')
+      const token = localStorage.getItem('gde_token')
       if (!token) return
 
       // Fetch tracking summary
@@ -268,7 +273,7 @@ export default function TraceabilityModule() {
 
   const handleSaveGuide = async (guideData: any) => {
     try {
-      const token = localStorage.getItem('auth_token')
+      const token = localStorage.getItem('gde_token')
       if (!token) {
         toast.error('No se encontró token de autenticación')
         return
@@ -299,7 +304,7 @@ export default function TraceabilityModule() {
 
   const handleSaveKardex = async (kardexMovementData: any) => {
     try {
-      const token = localStorage.getItem('auth_token')
+      const token = localStorage.getItem('gde_token')
       if (!token) {
         toast.error('No se encontró token de autenticación')
         return
@@ -467,10 +472,14 @@ export default function TraceabilityModule() {
               <h3 className="text-2xl font-bold">Control de Guías Madre</h3>
               <p className="text-muted-foreground">Sistema de seguimiento en tiempo real con comparación automática</p>
             </div>
-            <Button onClick={() => setShowGuideMasterUpload(true)}>
-              <FileUp className="w-4 h-4 mr-2" />
-              Importar CSV Droppi
-            </Button>
+            <div className="flex gap-2">
+              <ExportButton
+                exportEndpoint="/guide-master/export"
+                filename="guias_madre"
+                variant="outline"
+                showLabel={false}
+              />
+            </div>
           </div>
 
           {/* Dashboard en Tiempo Real */}
@@ -498,8 +507,7 @@ export default function TraceabilityModule() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-3xl font-bold text-green-600">{trackingSummary.guides_scanned}</div>
-                  <Progress value={trackingSummary.completion_percentage} className="mt-2" />
-                  <p className="text-xs text-muted-foreground mt-1">{trackingSummary.completion_percentage.toFixed(1)}% completado</p>
+                  <p className="text-xs text-muted-foreground mt-1">{typeof trackingSummary.completion_percentage === 'number' ? trackingSummary.completion_percentage.toFixed(1) : '0.0'}% completado</p>
                 </CardContent>
               </Card>
 
@@ -688,10 +696,16 @@ export default function TraceabilityModule() {
               </Select>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setShowGuideImportModal(true)}>
+              <Button variant="outline" onClick={() => setShowDeliveryGuideImport(true)}>
                 <Upload className="w-4 h-4 mr-2" />
-                Importar Excel
+                Importar Guías
               </Button>
+              <ExportButton
+                exportEndpoint="/delivery-guides/export"
+                filename="guias_despacho"
+                variant="outline"
+                showLabel={false}
+              />
               <Button onClick={() => handleAddRow('guias')}>
                 <Plus className="w-4 h-4 mr-2" />
                 Nueva Guía
@@ -812,14 +826,16 @@ export default function TraceabilityModule() {
               </div>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setShowImportModal(true)}>
+              <Button variant="outline" onClick={() => setShowKardexImport(true)}>
                 <Upload className="w-4 h-4 mr-2" />
-                Importar Excel
+                Importar Kardex
               </Button>
-              <Button variant="outline">
-                <Download className="w-4 h-4 mr-2" />
-                Exportar Kardex
-              </Button>
+              <ExportButton
+                exportEndpoint="/kardex/export"
+                filename="kardex"
+                variant="outline"
+                showLabel={false}
+              />
               <Button onClick={() => handleAddRow('kardex')}>
                 <Plus className="w-4 h-4 mr-2" />
                 Nuevo Movimiento
@@ -929,14 +945,6 @@ export default function TraceabilityModule() {
         onClose={() => setShowGuideImportModal(false)}
       />
 
-      <GuideMasterUpload
-        isOpen={showGuideMasterUpload}
-        onClose={() => setShowGuideMasterUpload(false)}
-        onSuccess={() => {
-          fetchGuideMasterData()
-          toast.success("Guías madre importadas correctamente")
-        }}
-      />
 
       <GuideModal
         isOpen={showGuideModal}
@@ -951,6 +959,59 @@ export default function TraceabilityModule() {
         onSave={handleSaveKardex}
         editingKardex={editingItem}
       />
+
+      {/* Universal Import Wizards */}
+      
+
+      {/* Import Guías de Despacho */}
+      <Dialog open={showDeliveryGuideImport} onOpenChange={setShowDeliveryGuideImport}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Importar Guías de Despacho</DialogTitle>
+            <DialogDescription>
+              Importe guías de despacho con validación automática
+            </DialogDescription>
+          </DialogHeader>
+          <UniversalImportWizard
+            validateEndpoint="/delivery-guides/import/validate"
+            importEndpoint="/delivery-guides/import/import"
+            importType="delivery_guides"
+            moduleName="Guías de Despacho"
+            onSuccess={() => {
+              setShowDeliveryGuideImport(false)
+              fetchGuiasDespacho()
+              toast.success("Guías de despacho importadas exitosamente")
+            }}
+            onCancel={() => setShowDeliveryGuideImport(false)}
+            allowUpdate={true}
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Kardex */}
+      <Dialog open={showKardexImport} onOpenChange={setShowKardexImport}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Importar Movimientos de Kardex</DialogTitle>
+            <DialogDescription>
+              Importe movimientos de inventario con validación automática
+            </DialogDescription>
+          </DialogHeader>
+          <UniversalImportWizard
+            validateEndpoint="/kardex/import/validate"
+            importEndpoint="/kardex/import/import"
+            importType="kardex"
+            moduleName="Kardex"
+            onSuccess={() => {
+              setShowKardexImport(false)
+              fetchKardexData()
+              toast.success("Movimientos de kardex importados exitosamente")
+            }}
+            onCancel={() => setShowKardexImport(false)}
+            allowUpdate={false}
+          />
+        </DialogContent>
+      </Dialog>
         </>
       )}
     </div>

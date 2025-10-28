@@ -44,6 +44,7 @@ export default function BulkFinancialImportModal({ isOpen, onClose, type }: Bulk
   const [isProcessing, setIsProcessing] = useState(false)
   const [columnMappings, setColumnMappings] = useState<ColumnMapping[]>([])
   const [activeTab, setActiveTab] = useState("upload")
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null)
 
   // Columnas recomendadas según el tipo
   const getRecommendedColumns = () => {
@@ -191,12 +192,13 @@ export default function BulkFinancialImportModal({ isOpen, onClose, type }: Bulk
     }
   }
 
-  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file) {
       setIsProcessing(true)
       setFileName(file.name)
       setFileError(null)
+      setUploadedFile(file)  // Guardar el archivo
 
       // Validar tipo de archivo
       if (!file.name.endsWith(".csv") && !file.name.endsWith(".xlsx") && !file.name.endsWith(".xls")) {
@@ -208,13 +210,52 @@ export default function BulkFinancialImportModal({ isOpen, onClose, type }: Bulk
         return
       }
 
-      // Simular procesamiento del archivo
-      setTimeout(() => {
-        const simulatedData = simulateFinancialData(file.name)
-        const columns = Object.keys(simulatedData[0])
+      try {
+        // Llamar a la API real para validar el archivo
+        const formData = new FormData()
+        formData.append("file", file)
+
+        const typeMap = {
+          costos: "costs",
+          gastos: "expenses",
+          capital: "capital"
+        }
+        
+        const apiType = typeMap[type]
+        const response = await fetch(`/api/v1/accounting/${apiType}/import/validate`, {
+          method: "POST",
+          body: formData,
+          credentials: "include",
+        })
+
+        if (!response.ok) {
+          throw new Error("Error al validar el archivo")
+        }
+
+        const result = await response.json()
+        
+        console.log("Backend response:", result)
+        console.log("Status:", result.status)
+        console.log("Data:", result.data)
+        console.log("is_valid:", result.data?.is_valid)
+        
+        if (result.status === "error" || !result.data?.is_valid) {
+          console.error("Validation failed:", result.data?.error)
+          setFileError(result.data?.error || "El archivo contiene errores de validación")
+          setIsProcessing(false)
+          return
+        }
+
+        // Procesar respuesta exitosa
+        const validationData = result.data
+        console.log("Validation data:", validationData)
+        console.log("Preview data:", validationData.preview_data)
+        const columns = validationData.preview_data && validationData.preview_data.length > 0 
+          ? Object.keys(validationData.preview_data[0])
+          : []
 
         setDetectedColumns(columns)
-        setPreviewData(simulatedData)
+        setPreviewData(validationData.preview_data || [])
 
         // Crear mapeos automáticos
         const mappings: ColumnMapping[] = columns.map((col) => {
@@ -233,14 +274,21 @@ export default function BulkFinancialImportModal({ isOpen, onClose, type }: Bulk
 
         setColumnMappings(mappings)
         setIsProcessing(false)
+        console.log("Changing tab to preview")
         setActiveTab("preview")
-      }, 1500) // Simular tiempo de procesamiento
+        console.log("Tab changed to:", "preview")
+      } catch (error) {
+        console.error("Error validating file:", error)
+        setFileError(error instanceof Error ? error.message : "Error al procesar el archivo")
+        setIsProcessing(false)
+      }
     } else {
       setFileName(null)
       setDetectedColumns([])
       setPreviewData([])
       setFileError(null)
       setColumnMappings([])
+      setUploadedFile(null)
     }
   }
 
@@ -268,21 +316,66 @@ export default function BulkFinancialImportModal({ isOpen, onClose, type }: Bulk
     }
   }
 
-  const handleImport = () => {
+  const handleImport = async () => {
     const validation = getValidationSummary()
     if (!validation.isValid) {
       alert("Por favor, mapea todas las columnas requeridas antes de importar.")
       return
     }
 
-    // Aquí iría la lógica real de importación
-    const typeLabels = {
-      costos: "costos",
-      gastos: "gastos", 
-      capital: "movimientos de capital"
+    setIsProcessing(true)
+    
+    try {
+      // Usar el archivo guardado
+      if (!uploadedFile) {
+        setFileError("No se encontró el archivo")
+        setIsProcessing(false)
+        return
+      }
+
+      const formData = new FormData()
+      formData.append("file", uploadedFile)
+
+      const typeMap = {
+        costos: "costs",
+        gastos: "expenses",
+        capital: "capital"
+      }
+      
+      const apiType = typeMap[type]
+      const response = await fetch(`/api/v1/accounting/${apiType}/import/import`, {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      })
+
+      if (!response.ok) {
+        throw new Error("Error al importar el archivo")
+      }
+
+      const result = await response.json()
+      
+      if (result.status === "error") {
+        setFileError(result.data.error || "Error al importar el archivo")
+        setIsProcessing(false)
+        return
+      }
+
+      const typeLabels = {
+        costos: "costos",
+        gastos: "gastos", 
+        capital: "movimientos de capital"
+      }
+      
+      const stats = result.data.stats || {}
+      alert(`Importación exitosa: ${stats.successful || previewData.length} ${typeLabels[type]} procesados.`)
+      onClose()
+      setIsProcessing(false)
+    } catch (error) {
+      console.error("Error importing file:", error)
+      setFileError(error instanceof Error ? error.message : "Error al importar el archivo")
+      setIsProcessing(false)
     }
-    alert(`Importación exitosa: ${previewData.length} ${typeLabels[type]} procesados.`)
-    onClose()
   }
 
   const resetModal = () => {
@@ -292,6 +385,7 @@ export default function BulkFinancialImportModal({ isOpen, onClose, type }: Bulk
     setFileError(null)
     setColumnMappings([])
     setActiveTab("upload")
+    setUploadedFile(null)
   }
 
   const validation = getValidationSummary()
