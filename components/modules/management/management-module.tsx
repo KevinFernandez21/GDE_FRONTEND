@@ -638,7 +638,8 @@ export default function ManagementModule() {
         return
       }
 
-      const response = await fetch('http://localhost:8000/api/v1/accounting/costs', {
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1'
+      const response = await fetch(`${API_BASE_URL}/accounting/costs`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -669,7 +670,8 @@ export default function ManagementModule() {
         return
       }
 
-      const response = await fetch('http://localhost:8000/api/v1/accounting/expenses', {
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1'
+      const response = await fetch(`${API_BASE_URL}/accounting/expenses`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -700,7 +702,8 @@ export default function ManagementModule() {
         return
       }
 
-      const response = await fetch('http://localhost:8000/api/v1/accounting/capital', {
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1'
+      const response = await fetch(`${API_BASE_URL}/accounting/capital`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

@@ -66,8 +66,9 @@ export default function GuideMasterUpload({ isOpen, onClose, onSuccess }: GuideM
       const formData = new FormData()
       formData.append('file', file)
 
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1'
       const response = await fetch(
-        `http://localhost:8000/api/v1/guide-master/import-csv?batch_name=${encodeURIComponent(batchName)}`,
+        `${API_BASE_URL}/guide-master/import-csv?batch_name=${encodeURIComponent(batchName)}`,
         {
           method: 'POST',
           headers: {

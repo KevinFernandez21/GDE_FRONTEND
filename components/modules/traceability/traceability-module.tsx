@@ -110,7 +110,8 @@ export default function TraceabilityModule() {
         return
       }
 
-      const response = await fetch('http://localhost:8000/api/v1/delivery-guides/?page=1&size=50', {
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1'
+      const response = await fetch(`${API_BASE_URL}/delivery-guides/?page=1&size=50`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -138,7 +139,8 @@ export default function TraceabilityModule() {
         return
       }
 
-      const response = await fetch('http://localhost:8000/api/v1/kardex/?page=1&size=50', {
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1'
+      const response = await fetch(`${API_BASE_URL}/kardex/?page=1&size=50`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -164,7 +166,8 @@ export default function TraceabilityModule() {
       if (!token) return
 
       // Fetch tracking summary
-      const summaryResponse = await fetch('http://localhost:8000/api/v1/guide-master/tracking-summary', {
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1'
+      const summaryResponse = await fetch(`${API_BASE_URL}/guide-master/tracking-summary`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -177,7 +180,7 @@ export default function TraceabilityModule() {
       }
 
       // Fetch import batches
-      const batchesResponse = await fetch('http://localhost:8000/api/v1/guide-master/batches?limit=10', {
+      const batchesResponse = await fetch(`${API_BASE_URL}/guide-master/batches?limit=10`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -190,7 +193,7 @@ export default function TraceabilityModule() {
       }
 
       // Fetch pending guides
-      const pendingResponse = await fetch('http://localhost:8000/api/v1/guide-master/pending-guides?limit=50', {
+      const pendingResponse = await fetch(`${API_BASE_URL}/guide-master/pending-guides?limit=50`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -203,7 +206,7 @@ export default function TraceabilityModule() {
       }
 
       // Fetch unknown guides
-      const unknownResponse = await fetch('http://localhost:8000/api/v1/guide-master/unknown-guides?limit=20', {
+      const unknownResponse = await fetch(`${API_BASE_URL}/guide-master/unknown-guides?limit=20`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -321,7 +324,8 @@ export default function TraceabilityModule() {
         return
       }
 
-      const response = await fetch('http://localhost:8000/api/v1/delivery-guides/', {
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1'
+      const response = await fetch(`${API_BASE_URL}/delivery-guides/`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -352,7 +356,8 @@ export default function TraceabilityModule() {
         return
       }
 
-      const response = await fetch('http://localhost:8000/api/v1/kardex/movement', {
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1'
+      const response = await fetch(`${API_BASE_URL}/kardex/movement`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
