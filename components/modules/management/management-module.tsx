@@ -41,6 +41,39 @@ export default function ManagementModule() {
   const [showExpensesImport, setShowExpensesImport] = useState(false)
   const [showCapitalImport, setShowCapitalImport] = useState(false)
 
+  // Search states
+  const [searchCosts, setSearchCosts] = useState("")
+  const [searchExpenses, setSearchExpenses] = useState("")
+  const [searchCapital, setSearchCapital] = useState("")
+
+  // Filter functions
+  const filterCosts = (costs: any[]) => {
+    if (!searchCosts) return costs
+    return costs.filter(costo => 
+      (costo.descripcion || costo.description || "").toLowerCase().includes(searchCosts.toLowerCase()) ||
+      (costo.name || "").toLowerCase().includes(searchCosts.toLowerCase()) ||
+      (costo.category || "").toLowerCase().includes(searchCosts.toLowerCase())
+    )
+  }
+
+  const filterExpenses = (expenses: any[]) => {
+    if (!searchExpenses) return expenses
+    return expenses.filter(gasto => 
+      (gasto.descripcion || gasto.description || "").toLowerCase().includes(searchExpenses.toLowerCase()) ||
+      (gasto.name || "").toLowerCase().includes(searchExpenses.toLowerCase()) ||
+      (gasto.category || "").toLowerCase().includes(searchExpenses.toLowerCase())
+    )
+  }
+
+  const filterCapital = (capital: any[]) => {
+    if (!searchCapital) return capital
+    return capital.filter(cap => 
+      (cap.descripcion || cap.description || "").toLowerCase().includes(searchCapital.toLowerCase()) ||
+      (cap.name || cap.socio || "").toLowerCase().includes(searchCapital.toLowerCase()) ||
+      (cap.capital_type || cap.tipo || "").toLowerCase().includes(searchCapital.toLowerCase())
+    )
+  }
+
   // Helper function to safely format numbers
   const formatCurrency = (value: any, options?: Intl.NumberFormatOptions) => {
     if (value === null || value === undefined || isNaN(value)) {
@@ -847,18 +880,13 @@ export default function ManagementModule() {
             <div className="flex flex-col sm:flex-row gap-4 flex-1">
               <div className="relative flex-1 max-w-md">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                <Input placeholder="Buscar costos..." className="pl-10" />
+                <Input 
+                  placeholder="Buscar costos..." 
+                  className="pl-10" 
+                  value={searchCosts}
+                  onChange={(e) => setSearchCosts(e.target.value)}
+                />
               </div>
-              <Select>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Categoría" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="costo-ventas">Costo de Ventas</SelectItem>
-                  <SelectItem value="gastos-operativos">Gastos Operativos</SelectItem>
-                  <SelectItem value="gastos-financieros">Gastos Financieros</SelectItem>
-                </SelectContent>
-              </Select>
               <div className="flex gap-2">
                 <Input type="date" className="w-[150px]" />
                 <Input type="date" className="w-[150px]" />
@@ -950,7 +978,7 @@ export default function ManagementModule() {
                      </TableRow>
                    </TableHeader>
                 <TableBody>
-                  {(managementData.costos || []).map((costo) => {
+                  {filterCosts(managementData.costos || []).map((costo) => {
                     return (
                       <TableRow key={costo.id}>
                         <TableCell>{renderEditableCell(costo, 'fecha', 'costos')}</TableCell>
@@ -991,18 +1019,13 @@ export default function ManagementModule() {
             <div className="flex flex-col sm:flex-row gap-4 flex-1">
               <div className="relative flex-1 max-w-md">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                <Input placeholder="Buscar gastos..." className="pl-10" />
+                <Input 
+                  placeholder="Buscar gastos..." 
+                  className="pl-10" 
+                  value={searchExpenses}
+                  onChange={(e) => setSearchExpenses(e.target.value)}
+                />
               </div>
-              <Select>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Tipo de Gasto" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="administrativos">Gastos Administrativos</SelectItem>
-                  <SelectItem value="ventas">Gastos de Ventas</SelectItem>
-                  <SelectItem value="generales">Gastos Generales</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setShowExpensesImport(true)}>
@@ -1089,7 +1112,7 @@ export default function ManagementModule() {
                      </TableRow>
                    </TableHeader>
                 <TableBody>
-                  {(managementData.gastos || []).map((gasto) => {
+                  {filterExpenses(managementData.gastos || []).map((gasto) => {
                     return (
                       <TableRow key={gasto.id}>
                         <TableCell>{renderEditableCell(gasto, 'fecha', 'gastos')}</TableCell>
@@ -1123,7 +1146,18 @@ export default function ManagementModule() {
 
         <TabsContent value="capital" className="space-y-4">
           <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-            <h3 className="text-lg font-semibold">Control de Capital y Financiamiento</h3>
+            <div className="flex flex-col sm:flex-row gap-4 flex-1">
+              <h3 className="text-lg font-semibold">Control de Capital y Financiamiento</h3>
+              <div className="relative flex-1 max-w-md">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <Input 
+                  placeholder="Buscar movimientos de capital..." 
+                  className="pl-10" 
+                  value={searchCapital}
+                  onChange={(e) => setSearchCapital(e.target.value)}
+                />
+              </div>
+            </div>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setShowCapitalImport(true)}>
                 <Upload className="w-4 h-4 mr-2" />
@@ -1180,7 +1214,7 @@ export default function ManagementModule() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(managementData.capital || []).map((capital) => {
+                  {filterCapital(managementData.capital || []).map((capital) => {
                     return (
                       <TableRow key={capital.id}>
                         <TableCell>{capital.date || capital.fecha || '-'}</TableCell>

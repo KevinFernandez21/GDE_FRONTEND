@@ -21,6 +21,7 @@ import UniversalImportWizard from "@/components/shared/universal-import-wizard"
 import ExportButton from "@/components/shared/export-button"
 import { useState, useCallback, useEffect } from "react"
 import { toast } from "sonner"
+import { apiClient } from "@/lib/api"
 
 interface TrackingSummary {
   batch_id: string
@@ -52,6 +53,47 @@ export default function TraceabilityModule() {
   const [selectedRows, setSelectedRows] = useState<{[key: string]: number[]}>({guias: [], kardex: []})
   const [hasChanges, setHasChanges] = useState(false)
   const [loading, setLoading] = useState(true)
+  
+  // Search states
+  const [searchGuides, setSearchGuides] = useState("")
+  const [deleteTarget, setDeleteTarget] = useState<any | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  // Filter function for guides
+  const filterGuides = (guides: any[]) => {
+    if (!searchGuides) return guides
+    return guides.filter(guia => 
+      (guia.codigo || "").toLowerCase().includes(searchGuides.toLowerCase()) ||
+      (guia.cliente || "").toLowerCase().includes(searchGuides.toLowerCase()) ||
+      (guia.estado || "").toLowerCase().includes(searchGuides.toLowerCase()) ||
+      (guia.usuario || "").toLowerCase().includes(searchGuides.toLowerCase())
+    )
+  }
+
+  // Delete guide function
+  const handleDeleteGuide = async (guideId: string) => {
+    setIsDeleting(true)
+    try {
+      // Call API to delete from database
+      const response = await apiClient.request(`/delivery-guides/${guideId}`, {
+        method: "DELETE"
+      })
+      
+      if (response.data || response.message) {
+        // Remove from local state only after successful API call
+        setGuiasDespacho(prev => prev.filter(guia => guia.id !== guideId))
+        toast.success("Guía eliminada exitosamente")
+        setDeleteTarget(null)
+      } else {
+        toast.error(response.error || "Error al eliminar la guía")
+      }
+    } catch (error) {
+      toast.error("Error al eliminar la guía")
+      console.error("Delete guide error:", error)
+    } finally {
+      setIsDeleting(false)
+    }
+  }
 
   // Guide Master state
   const [trackingSummary, setTrackingSummary] = useState<TrackingSummary | null>(null)
@@ -458,10 +500,9 @@ export default function TraceabilityModule() {
       {!loading && (
         <>
           <Tabs defaultValue="master" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="master">Guías Madre</TabsTrigger>
           <TabsTrigger value="guias">Guías de Despacho</TabsTrigger>
-          <TabsTrigger value="kardex">Kardex</TabsTrigger>
           <TabsTrigger value="scanning">Escaneo de Guías</TabsTrigger>
         </TabsList>
 
@@ -681,7 +722,12 @@ export default function TraceabilityModule() {
             <div className="flex flex-col sm:flex-row gap-4 flex-1">
               <div className="relative flex-1 max-w-md">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                <Input placeholder="Buscar guías..." className="pl-10" />
+                <Input 
+                  placeholder="Buscar guías..." 
+                  className="pl-10" 
+                  value={searchGuides}
+                  onChange={(e) => setSearchGuides(e.target.value)}
+                />
               </div>
               <Select>
                 <SelectTrigger className="w-[180px]">
@@ -713,39 +759,6 @@ export default function TraceabilityModule() {
             </div>
           </div>
 
-          {/* Controles de Edición - Guías */}
-          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between bg-blue-50 p-4 rounded-lg border border-blue-200">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  checked={selectedRows.guias.length === guiasDespacho.length && guiasDespacho.length > 0}
-                  onCheckedChange={() => handleSelectAll('guias')}
-                />
-                <span className="text-sm font-medium">
-                  {selectedRows.guias.length > 0 ? `${selectedRows.guias.length} seleccionadas` : "Seleccionar todo"}
-                </span>
-              </div>
-              {selectedRows.guias.length > 0 && (
-                <Button variant="destructive" size="sm" onClick={() => handleDeleteRows('guias')}>
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Eliminar Seleccionadas
-                </Button>
-              )}
-            </div>
-            <div className="flex gap-2">
-              <Button onClick={() => handleAddRow('guias')} size="sm">
-                <RowsIcon className="w-4 h-4 mr-2" />
-                Agregar Fila
-              </Button>
-              {hasChanges && (
-                <Button onClick={() => {setHasChanges(false); toast.success("Cambios guardados");}} size="sm" variant="default">
-                  <Save className="w-4 h-4 mr-2" />
-                  Guardar Cambios
-                </Button>
-              )}
-            </div>
-          </div>
-
           <Card>
             <CardHeader>
               <CardTitle>Estado de Guías de Despacho</CardTitle>
@@ -755,40 +768,35 @@ export default function TraceabilityModule() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-12">Sel.</TableHead>
                     <TableHead>Código Guía</TableHead>
                     <TableHead>Fecha</TableHead>
                     <TableHead>Cliente</TableHead>
                     <TableHead>Productos</TableHead>
                     <TableHead>Estado</TableHead>
                     <TableHead>Usuario Responsable</TableHead>
-                    <TableHead>Acciones</TableHead>
+                    <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {guiasDespacho.map((guia) => {
-                    const isSelected = selectedRows.guias?.includes(guia.id)
+                  {filterGuides(guiasDespacho).map((guia) => {
                     return (
-                      <TableRow key={guia.id} className={isSelected ? 'bg-blue-50' : ''}>
-                        <TableCell>
-                          <Checkbox
-                            checked={isSelected}
-                            onCheckedChange={() => handleSelectRow(guia.id, 'guias')}
-                          />
-                        </TableCell>
+                      <TableRow key={guia.id}>
                         <TableCell>{renderEditableCell(guia, 'codigo', 'guias')}</TableCell>
                         <TableCell>{renderEditableCell(guia, 'fecha', 'guias')}</TableCell>
                         <TableCell>{renderEditableCell(guia, 'cliente', 'guias')}</TableCell>
                         <TableCell>{renderEditableCell(guia, 'productos', 'guias')}</TableCell>
                         <TableCell>{renderEditableCell(guia, 'estado', 'guias')}</TableCell>
                         <TableCell>{renderEditableCell(guia, 'usuario', 'guias')}</TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            <Button variant="ghost" size="sm">
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                            <Button variant="ghost" size="sm">
-                              <Edit className="w-4 h-4" />
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => setDeleteTarget(guia)}
+                              className="h-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+                              title="Eliminar guía"
+                            >
+                              <Trash2 className="w-4 h-4" />
                             </Button>
                           </div>
                         </TableCell>
@@ -801,134 +809,6 @@ export default function TraceabilityModule() {
           </Card>
         </TabsContent>
 
-        {/* TAB: KARDEX (Original) */}
-        <TabsContent value="kardex" className="space-y-4">
-          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-            <div className="flex flex-col sm:flex-row gap-4 flex-1">
-              <div className="relative flex-1 max-w-md">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                <Input placeholder="Buscar movimientos..." className="pl-10" />
-              </div>
-              <Select>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Tipo de movimiento" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="entrada">Entrada</SelectItem>
-                  <SelectItem value="salida">Salida</SelectItem>
-                  <SelectItem value="ajuste">Ajuste</SelectItem>
-                  <SelectItem value="transferencia">Transferencia</SelectItem>
-                </SelectContent>
-              </Select>
-              <div className="flex gap-2">
-                <Input type="date" className="w-[150px]" />
-                <Input type="date" className="w-[150px]" />
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setShowKardexImport(true)}>
-                <Upload className="w-4 h-4 mr-2" />
-                Importar Kardex
-              </Button>
-              <ExportButton
-                exportEndpoint="/kardex/export"
-                filename="kardex"
-                variant="outline"
-                showLabel={false}
-              />
-              <Button onClick={() => handleAddRow('kardex')}>
-                <Plus className="w-4 h-4 mr-2" />
-                Nuevo Movimiento
-              </Button>
-            </div>
-          </div>
-
-          {/* Controles de Edición - Kardex */}
-          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between bg-blue-50 p-4 rounded-lg border border-blue-200">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  checked={selectedRows.kardex.length === kardexData.length && kardexData.length > 0}
-                  onCheckedChange={() => handleSelectAll('kardex')}
-                />
-                <span className="text-sm font-medium">
-                  {selectedRows.kardex.length > 0 ? `${selectedRows.kardex.length} seleccionadas` : "Seleccionar todo"}
-                </span>
-              </div>
-              {selectedRows.kardex.length > 0 && (
-                <Button variant="destructive" size="sm" onClick={() => handleDeleteRows('kardex')}>
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Eliminar Seleccionadas
-                </Button>
-              )}
-            </div>
-            <div className="flex gap-2">
-              <Button onClick={() => handleAddRow('kardex')} size="sm">
-                <RowsIcon className="w-4 h-4 mr-2" />
-                Agregar Fila
-              </Button>
-              {hasChanges && (
-                <Button onClick={() => {setHasChanges(false); toast.success("Cambios guardados");}} size="sm" variant="default">
-                  <Save className="w-4 h-4 mr-2" />
-                  Guardar Cambios
-                </Button>
-              )}
-            </div>
-          </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Kardex - Historial de Movimientos</CardTitle>
-              <CardDescription>Registro detallado de todos los movimientos de inventario</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-12">Sel.</TableHead>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead>Tipo Movimiento</TableHead>
-                    <TableHead>Documento Ref.</TableHead>
-                    <TableHead>Cantidad Entrada</TableHead>
-                    <TableHead>Cantidad Salida</TableHead>
-                    <TableHead>Saldo</TableHead>
-                    <TableHead>Usuario</TableHead>
-                    <TableHead>Observaciones</TableHead>
-                    <TableHead>Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {kardexData.map((movement) => {
-                    const isSelected = selectedRows.kardex?.includes(movement.id)
-                    return (
-                      <TableRow key={movement.id} className={isSelected ? 'bg-blue-50' : ''}>
-                        <TableCell>
-                          <Checkbox
-                            checked={isSelected}
-                            onCheckedChange={() => handleSelectRow(movement.id, 'kardex')}
-                          />
-                        </TableCell>
-                        <TableCell>{renderEditableCell(movement, 'fecha', 'kardex')}</TableCell>
-                        <TableCell>{renderEditableCell(movement, 'tipoMovimiento', 'kardex')}</TableCell>
-                        <TableCell>{renderEditableCell(movement, 'documento', 'kardex')}</TableCell>
-                        <TableCell>{renderEditableCell(movement, 'cantidadEntrada', 'kardex')}</TableCell>
-                        <TableCell>{renderEditableCell(movement, 'cantidadSalida', 'kardex')}</TableCell>
-                        <TableCell>{renderEditableCell(movement, 'saldo', 'kardex')}</TableCell>
-                        <TableCell>{renderEditableCell(movement, 'usuario', 'kardex')}</TableCell>
-                        <TableCell>{renderEditableCell(movement, 'observaciones', 'kardex')}</TableCell>
-                        <TableCell>
-                          <Button variant="ghost" size="sm">
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
 
         {/* TAB: ESCANEO DE GUÍAS (Original) */}
         <TabsContent value="scanning" className="space-y-4">
@@ -1010,6 +890,30 @@ export default function TraceabilityModule() {
             onCancel={() => setShowKardexImport(false)}
             allowUpdate={false}
           />
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>¿Eliminar guía?</DialogTitle>
+            <DialogDescription>
+              {`Esta acción eliminará la guía${deleteTarget ? ` "${deleteTarget.codigo || deleteTarget.id}"` : ""} y no se puede deshacer.`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => handleDeleteGuide(deleteTarget?.id)}
+              disabled={isDeleting}
+            >
+              {isDeleting ? "Eliminando..." : "Eliminar"}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
         </>
