@@ -6,7 +6,7 @@
  * Supports CSV/Excel imports with validation, preview, and error handling
  */
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useRef } from "react"
 import { Upload, FileSpreadsheet, AlertCircle, CheckCircle2, XCircle, Download, FileText, Info } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -69,6 +69,8 @@ export default function UniversalImportWizard({
   const [isValidating, setIsValidating] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
   const [importResult, setImportResult] = useState<any>(null)
+  const [isDragging, setIsDragging] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0]
@@ -90,16 +92,72 @@ export default function UniversalImportWizard({
     }
   }
 
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(true)
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+  }, [])
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+
+    const droppedFiles = Array.from(e.dataTransfer.files)
+    if (droppedFiles.length > 0) {
+      const selectedFile = droppedFiles[0]
+      
+      // Validate file type
+      const validTypes = [
+        'text/csv',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      ]
+      if (!validTypes.includes(selectedFile.type) && 
+          !selectedFile.name.match(/\.(csv|xlsx|xls)$/i)) {
+        toast.error("Formato de archivo no válido. Use CSV o Excel (.xlsx)")
+        return
+      }
+      
+      setFile(selectedFile)
+      setValidation(null)
+    }
+  }, [])
+
+  const handleClick = () => {
+    fileInputRef.current?.click()
+  }
+
   const handleValidate = async () => {
-    if (!file) return
+    console.log('[UniversalImportWizard] handleValidate called')
+    console.log('[UniversalImportWizard] File:', file)
+    console.log('[UniversalImportWizard] Validate endpoint:', validateEndpoint)
+    
+    if (!file) {
+      console.log('[UniversalImportWizard] No file selected, returning')
+      return
+    }
 
     setIsValidating(true)
+    console.log('[UniversalImportWizard] Starting validation...')
+    
     try {
       const formData = new FormData()
       formData.append('file', file)
+      console.log('[UniversalImportWizard] FormData created with file:', file.name)
 
       const token = localStorage.getItem('gde_token')
       const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000/api/v1'
+      
+      console.log('[UniversalImportWizard] API_BASE_URL:', API_BASE_URL)
+      console.log('[UniversalImportWizard] Full URL:', `${API_BASE_URL}${validateEndpoint}`)
+      console.log('[UniversalImportWizard] Token exists:', !!token)
       
       const response = await fetch(`${API_BASE_URL}${validateEndpoint}`, {
         method: 'POST',
@@ -108,19 +166,28 @@ export default function UniversalImportWizard({
         },
         body: formData
       })
+      
+      console.log('[UniversalImportWizard] Response status:', response.status)
+      console.log('[UniversalImportWizard] Response headers:', Object.fromEntries(response.headers.entries()))
 
       const result = await response.json()
+      console.log('[UniversalImportWizard] Response result:', result)
 
       if (result.success && result.data) {
+        console.log('[UniversalImportWizard] Validation successful, setting validation data:', result.data)
         setValidation(result.data)
         setStep('validate')
+        console.log('[UniversalImportWizard] Step changed to validate')
         
         if (!result.data.valid_for_import) {
+          console.log('[UniversalImportWizard] File has validation errors')
           toast.warning("El archivo contiene errores que deben corregirse")
         } else {
+          console.log('[UniversalImportWizard] File validation passed')
           toast.success("Validación exitosa. El archivo está listo para importar")
         }
       } else {
+        console.log('[UniversalImportWizard] Validation failed:', result.message)
         toast.error(result.message || "Error al validar el archivo")
       }
     } catch (error) {
@@ -132,18 +199,31 @@ export default function UniversalImportWizard({
   }
 
   const handleImport = async () => {
-    if (!file) return
+    console.log('[UniversalImportWizard] handleImport called')
+    console.log('[UniversalImportWizard] File:', file)
+    console.log('[UniversalImportWizard] Import endpoint:', importEndpoint)
+    
+    if (!file) {
+      console.log('[UniversalImportWizard] No file selected for import, returning')
+      return
+    }
 
     setIsImporting(true)
+    console.log('[UniversalImportWizard] Starting import...')
+    
     try {
       const formData = new FormData()
       formData.append('file', file)
       if (allowUpdate) {
         formData.append('update_existing', 'true')
+        console.log('[UniversalImportWizard] Update existing enabled')
       }
 
       const token = localStorage.getItem('gde_token')
       const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000/api/v1'
+      
+      console.log('[UniversalImportWizard] API_BASE_URL:', API_BASE_URL)
+      console.log('[UniversalImportWizard] Full import URL:', `${API_BASE_URL}${importEndpoint}`)
       
       const response = await fetch(`${API_BASE_URL}${importEndpoint}`, {
         method: 'POST',
@@ -153,7 +233,9 @@ export default function UniversalImportWizard({
         body: formData
       })
 
+      console.log('[UniversalImportWizard] Import response status:', response.status)
       const result = await response.json()
+      console.log('[UniversalImportWizard] Import response result:', result)
       
       console.log("=" .repeat(60))
       console.log("🔍 IMPORT RESULT FROM BACKEND:")
@@ -162,6 +244,10 @@ export default function UniversalImportWizard({
       console.log("result.stats:", result.stats)
       console.log("result.results:", result.results)
       console.log("result.data:", result.data)
+      console.log("result.data.stats:", result.data?.stats)
+      console.log("result.data.stats.total_rows:", result.data?.stats?.total_rows)
+      console.log("result.data.stats.successful_rows:", result.data?.stats?.successful_rows)
+      console.log("result.data.stats.failed_rows:", result.data?.stats?.failed_rows)
       console.log("=" .repeat(60))
 
       if (result.success) {
@@ -170,6 +256,8 @@ export default function UniversalImportWizard({
         // So we need to use result.data if it exists, otherwise use result directly
         const importData = result.data || result
         console.log("📦 Import data to display:", importData)
+        console.log("📊 Import data stats:", importData.stats)
+        console.log("📊 Import data data.stats:", importData.data?.stats)
         setImportResult(importData)
         setStep('complete')
         toast.success(result.message || "Importación completada exitosamente")
@@ -240,79 +328,103 @@ export default function UniversalImportWizard({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 bg-white">
       {/* Progress Steps */}
-      <div className="flex items-center justify-center space-x-4">
+      <div className="flex items-center justify-center space-x-4 py-4">
         <div className={`flex items-center space-x-2 ${step === 'upload' ? 'text-blue-600 font-semibold' : 'text-gray-400'}`}>
           <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${
-            step === 'upload' ? 'border-blue-600 bg-blue-50' : 'border-gray-300'
+            step === 'upload' ? 'border-blue-600 bg-blue-50 text-blue-600' : 'border-gray-300 text-gray-400'
           }`}>
             1
           </div>
-          <span>Cargar Archivo</span>
+          <span className="text-sm">Cargar Archivo</span>
         </div>
-        <div className="w-16 h-0.5 bg-gray-300" />
+        <div className={`w-16 h-0.5 ${step === 'validate' || step === 'import' || step === 'complete' ? 'bg-blue-300' : 'bg-gray-300'}`} />
         <div className={`flex items-center space-x-2 ${step === 'validate' ? 'text-blue-600 font-semibold' : 'text-gray-400'}`}>
           <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${
-            step === 'validate' ? 'border-blue-600 bg-blue-50' : 'border-gray-300'
+            step === 'validate' ? 'border-blue-600 bg-blue-50 text-blue-600' : 
+            step === 'import' || step === 'complete' ? 'border-blue-300 bg-blue-50 text-blue-600' : 'border-gray-300 text-gray-400'
           }`}>
             2
           </div>
-          <span>Validar</span>
+          <span className="text-sm">Validar</span>
         </div>
-        <div className="w-16 h-0.5 bg-gray-300" />
+        <div className={`w-16 h-0.5 ${step === 'import' || step === 'complete' ? 'bg-blue-300' : 'bg-gray-300'}`} />
         <div className={`flex items-center space-x-2 ${(step === 'import' || step === 'complete') ? 'text-blue-600 font-semibold' : 'text-gray-400'}`}>
           <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${
-            (step === 'import' || step === 'complete') ? 'border-blue-600 bg-blue-50' : 'border-gray-300'
+            (step === 'import' || step === 'complete') ? 'border-blue-600 bg-blue-50 text-blue-600' : 'border-gray-300 text-gray-400'
           }`}>
             3
           </div>
-          <span>Importar</span>
+          <span className="text-sm">Importar</span>
         </div>
       </div>
 
       {/* Step 1: Upload */}
       {step === 'upload' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Importar {moduleName}</CardTitle>
-            <CardDescription>
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-lg font-semibold text-gray-900">Importar {moduleName}</CardTitle>
+            <CardDescription className="text-sm text-gray-600">
               Cargue un archivo CSV o Excel con los datos a importar
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
-              <Upload className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-              <div className="space-y-2">
-                <p className="text-sm text-gray-600">
-                  Arrastra un archivo aquí o haz clic para seleccionar
-                </p>
-                <p className="text-xs text-gray-500">
-                  Formatos soportados: CSV, XLSX (máx. 10MB)
-                </p>
+          <CardContent className="space-y-6">
+            <div 
+              className={`border-2 border-dashed rounded-xl p-12 text-center transition-colors duration-200 cursor-pointer ${
+                isDragging 
+                  ? 'border-blue-500 bg-blue-50' 
+                  : 'border-gray-300 hover:border-blue-400 hover:bg-blue-50/50'
+              }`}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              onClick={handleClick}
+            >
+              <div className="flex flex-col items-center space-y-4">
+                <div className={`w-16 h-16 rounded-full flex items-center justify-center ${
+                  isDragging ? 'bg-blue-200' : 'bg-blue-100'
+                }`}>
+                  <Upload className={`w-8 h-8 ${isDragging ? 'text-blue-700' : 'text-blue-600'}`} />
+                </div>
+                <div className="space-y-2">
+                  <p className={`text-base font-medium ${
+                    isDragging ? 'text-blue-700' : 'text-gray-700'
+                  }`}>
+                    {isDragging ? 'Suelta el archivo aquí' : 'Arrastra un archivo aquí o haz clic para seleccionar'}
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    Formatos soportados: CSV, XLSX (máx. 10MB)
+                  </p>
+                </div>
                 <input
+                  ref={fileInputRef}
                   type="file"
                   accept=".csv,.xlsx,.xls"
                   onChange={handleFileSelect}
                   className="hidden"
-                  id="file-upload"
                 />
-                <label htmlFor="file-upload">
-                  <Button variant="outline" className="cursor-pointer" asChild>
-                    <span>Seleccionar Archivo</span>
-                  </Button>
-                </label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="mt-4 cursor-pointer hover:bg-blue-50 hover:border-blue-400 transition-colors duration-200"
+                >
+                  <span className="flex items-center gap-2">
+                    <FileSpreadsheet className="w-4 h-4" />
+                    Seleccionar Archivo
+                  </span>
+                </Button>
               </div>
             </div>
 
             {file && (
-              <Alert>
-                <FileSpreadsheet className="w-4 h-4" />
-                <AlertTitle>Archivo seleccionado</AlertTitle>
-                <AlertDescription>
+              <Alert className="border-green-200 bg-green-50">
+                <FileSpreadsheet className="w-4 h-4 text-green-600" />
+                <AlertTitle className="text-green-800">Archivo seleccionado</AlertTitle>
+                <AlertDescription className="text-green-700">
                   <div className="flex items-center justify-between mt-2">
-                    <span className="text-sm">{file.name}</span>
-                    <span className="text-xs text-gray-500">
+                    <span className="text-sm font-medium">{file.name}</span>
+                    <span className="text-xs text-green-600 bg-green-100 px-2 py-1 rounded">
                       {(file.size / 1024).toFixed(2)} KB
                     </span>
                   </div>
@@ -321,13 +433,13 @@ export default function UniversalImportWizard({
             )}
 
             {templateEndpoint && (
-              <Alert>
-                <Download className="w-4 h-4" />
-                <AlertTitle>¿Primera vez importando?</AlertTitle>
-                <AlertDescription>
+              <Alert className="border-blue-200 bg-blue-50">
+                <Download className="w-4 h-4 text-blue-600" />
+                <AlertTitle className="text-blue-800">¿Primera vez importando?</AlertTitle>
+                <AlertDescription className="text-blue-700">
                   <div className="flex items-center justify-between mt-2">
                     <span className="text-sm">Descarga la plantilla con el formato correcto</span>
-                    <Button variant="link" size="sm" onClick={handleDownloadTemplate}>
+                    <Button variant="link" size="sm" onClick={handleDownloadTemplate} className="text-blue-600 hover:text-blue-800">
                       Descargar Plantilla
                     </Button>
                   </div>
@@ -335,17 +447,30 @@ export default function UniversalImportWizard({
               </Alert>
             )}
 
-            <div className="flex justify-end space-x-2">
+            <div className="flex justify-end space-x-3 pt-4">
               {onCancel && (
-                <Button variant="outline" onClick={onCancel}>
+                <Button variant="outline" onClick={onCancel} className="px-6">
                   Cancelar
                 </Button>
               )}
               <Button 
-                onClick={handleValidate} 
+                onClick={() => {
+                  console.log('[UniversalImportWizard] Continue button clicked')
+                  console.log('[UniversalImportWizard] File available:', !!file)
+                  console.log('[UniversalImportWizard] Is validating:', isValidating)
+                  handleValidate()
+                }} 
                 disabled={!file || isValidating}
+                className="px-6 bg-blue-600 hover:bg-blue-700"
               >
-                {isValidating ? "Validando..." : "Continuar"}
+                {isValidating ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Validando...
+                  </div>
+                ) : (
+                  "Continuar"
+                )}
               </Button>
             </div>
           </CardContent>
@@ -354,31 +479,34 @@ export default function UniversalImportWizard({
 
       {/* Step 2: Validate */}
       {step === 'validate' && validation && (
-        <div className="space-y-4">
+        <div className="space-y-6">
           {/* File Info */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Información del Archivo</CardTitle>
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-lg font-semibold text-gray-900">Información del Archivo</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div>
-                  <p className="text-sm text-gray-500">Filas</p>
-                  <p className="text-2xl font-bold">{validation.file_info.rows}</p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                <div className="text-center p-4 bg-gray-50 rounded-lg">
+                  <p className="text-sm text-gray-600 mb-1">Filas</p>
+                  <p className="text-2xl font-bold text-gray-900">{validation.file_info.rows}</p>
                 </div>
-                <div>
-                  <p className="text-sm text-gray-500">Columnas</p>
-                  <p className="text-2xl font-bold">{validation.file_info.columns}</p>
+                <div className="text-center p-4 bg-gray-50 rounded-lg">
+                  <p className="text-sm text-gray-600 mb-1">Columnas</p>
+                  <p className="text-2xl font-bold text-gray-900">{validation.file_info.columns}</p>
                 </div>
-                <div>
-                  <p className="text-sm text-gray-500">Tamaño</p>
-                  <p className="text-2xl font-bold">
+                <div className="text-center p-4 bg-gray-50 rounded-lg">
+                  <p className="text-sm text-gray-600 mb-1">Tamaño</p>
+                  <p className="text-2xl font-bold text-gray-900">
                     {(validation.file_info.file_size / 1024).toFixed(2)} KB
                   </p>
                 </div>
-                <div>
-                  <p className="text-sm text-gray-500">Estado</p>
-                  <Badge variant={validation.valid_for_import ? "default" : "destructive"}>
+                <div className="text-center p-4 bg-gray-50 rounded-lg">
+                  <p className="text-sm text-gray-600 mb-1">Estado</p>
+                  <Badge 
+                    variant={validation.valid_for_import ? "default" : "destructive"}
+                    className={validation.valid_for_import ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}
+                  >
                     {validation.valid_for_import ? "Válido" : "Con Errores"}
                   </Badge>
                 </div>
@@ -388,21 +516,25 @@ export default function UniversalImportWizard({
 
           {/* Recommendations */}
           {validation.recommendations && validation.recommendations.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Recomendaciones</CardTitle>
+            <Card className="border-0 shadow-sm">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg font-semibold text-gray-900">Recomendaciones</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
+              <CardContent className="space-y-4">
                 {validation.recommendations.map((rec: any, idx: number) => (
-                  <Alert key={idx} variant={rec.severity === 'critical' ? 'destructive' : 'default'}>
+                  <Alert 
+                    key={idx} 
+                    variant={rec.severity === 'critical' ? 'destructive' : 'default'}
+                    className={rec.severity === 'critical' ? 'border-red-200 bg-red-50' : 'border-yellow-200 bg-yellow-50'}
+                  >
                     {getSeverityIcon(rec.severity)}
-                    <AlertTitle className="ml-2">{rec.type}</AlertTitle>
-                    <AlertDescription className="ml-7">
+                    <AlertTitle className="ml-2 text-sm font-semibold">{rec.type}</AlertTitle>
+                    <AlertDescription className="ml-7 text-sm">
                       {rec.message}
                       {rec.details && (
                         <details className="mt-2 text-xs">
-                          <summary className="cursor-pointer">Ver detalles</summary>
-                          <pre className="mt-2 p-2 bg-gray-100 rounded text-xs overflow-auto">
+                          <summary className="cursor-pointer text-blue-600 hover:text-blue-800">Ver detalles</summary>
+                          <pre className="mt-2 p-3 bg-gray-100 rounded text-xs overflow-auto border">
                             {JSON.stringify(rec.details, null, 2)}
                           </pre>
                         </details>
@@ -415,45 +547,55 @@ export default function UniversalImportWizard({
           )}
 
           {/* Preview Data */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Vista Previa (Primeras 10 Filas)</CardTitle>
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-lg font-semibold text-gray-900">Vista Previa (Primeras 10 Filas)</CardTitle>
             </CardHeader>
             <CardContent>
-              <ScrollArea className="h-[300px]">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      {validation.preview_data[0] && Object.keys(validation.preview_data[0]).map((key) => (
-                        <TableHead key={key}>{key}</TableHead>
-                      ))}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {validation.preview_data.map((row: any, idx: number) => (
-                      <TableRow key={idx}>
-                        {Object.values(row).map((value: any, cellIdx: number) => (
-                          <TableCell key={cellIdx}>
-                            {value !== null && value !== undefined ? String(value) : '-'}
-                          </TableCell>
+              <div className="border rounded-lg overflow-hidden">
+                <ScrollArea className="h-[300px]">
+                  <Table>
+                    <TableHeader className="bg-gray-50">
+                      <TableRow>
+                        {validation.preview_data[0] && Object.keys(validation.preview_data[0]).map((key) => (
+                          <TableHead key={key} className="font-semibold text-gray-700">{key}</TableHead>
                         ))}
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </ScrollArea>
+                    </TableHeader>
+                    <TableBody>
+                      {validation.preview_data.map((row: any, idx: number) => (
+                        <TableRow key={idx} className="hover:bg-gray-50">
+                          {Object.values(row).map((value: any, cellIdx: number) => (
+                            <TableCell key={cellIdx} className="text-sm">
+                              {value !== null && value !== undefined ? String(value) : '-'}
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </ScrollArea>
+              </div>
             </CardContent>
           </Card>
 
-          <div className="flex justify-between">
-            <Button variant="outline" onClick={() => setStep('upload')}>
+          <div className="flex justify-between pt-4">
+            <Button variant="outline" onClick={() => setStep('upload')} className="px-6">
               Atrás
             </Button>
             <Button 
               onClick={handleImport}
               disabled={!validation.valid_for_import || isImporting}
+              className="px-6 bg-blue-600 hover:bg-blue-700"
             >
-              {isImporting ? "Importando..." : "Importar Datos"}
+              {isImporting ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Importando...
+                </div>
+              ) : (
+                "Importar Datos"
+              )}
             </Button>
           </div>
         </div>
@@ -461,45 +603,50 @@ export default function UniversalImportWizard({
 
       {/* Step 3: Complete */}
       {step === 'complete' && importResult && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <CheckCircle2 className="w-6 h-6 text-green-500" />
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="pb-4">
+            <CardTitle className="flex items-center space-x-3 text-lg font-semibold text-gray-900">
+              <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
+                <CheckCircle2 className="w-5 h-5 text-green-600" />
+              </div>
               <span>Importación Completada</span>
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-3 gap-4">
-              <div className="text-center p-4 bg-green-50 rounded-lg">
-                <p className="text-sm text-gray-600">Exitosos</p>
-                <p className="text-3xl font-bold text-green-600">
-                  {importResult.stats?.successful || importResult.results?.successful_rows || 0}
+          <CardContent className="space-y-6">
+            <div className="grid grid-cols-3 gap-6">
+              <div className="text-center p-6 bg-green-50 rounded-xl border border-green-200">
+                <p className="text-sm text-green-700 font-medium mb-2">Exitosos</p>
+                <p className="text-4xl font-bold text-green-600">
+                  {importResult.stats?.successful_rows || importResult.results?.successful_rows || importResult.data?.stats?.successful_rows || 0}
                 </p>
               </div>
-              <div className="text-center p-4 bg-red-50 rounded-lg">
-                <p className="text-sm text-gray-600">Fallidos</p>
-                <p className="text-3xl font-bold text-red-600">
-                  {importResult.stats?.failed || importResult.results?.failed_rows || 0}
+              <div className="text-center p-6 bg-red-50 rounded-xl border border-red-200">
+                <p className="text-sm text-red-700 font-medium mb-2">Fallidos</p>
+                <p className="text-4xl font-bold text-red-600">
+                  {importResult.stats?.failed_rows || importResult.results?.failed_rows || importResult.data?.stats?.failed_rows || 0}
                 </p>
               </div>
-              <div className="text-center p-4 bg-blue-50 rounded-lg">
-                <p className="text-sm text-gray-600">Total</p>
-                <p className="text-3xl font-bold text-blue-600">
-                  {importResult.stats?.total || importResult.results?.total_rows || 0}
+              <div className="text-center p-6 bg-blue-50 rounded-xl border border-blue-200">
+                <p className="text-sm text-blue-700 font-medium mb-2">Total</p>
+                <p className="text-4xl font-bold text-blue-600">
+                  {importResult.stats?.total_rows || importResult.results?.total_rows || importResult.data?.stats?.total_rows || 0}
                 </p>
               </div>
             </div>
 
             {importResult.results?.errors && importResult.results.errors.length > 0 && (
-              <Alert variant="destructive">
-                <AlertCircle className="w-4 h-4" />
-                <AlertTitle>Algunos registros fallaron</AlertTitle>
-                <AlertDescription>
+              <Alert variant="destructive" className="border-red-200 bg-red-50">
+                <AlertCircle className="w-4 h-4 text-red-600" />
+                <AlertTitle className="text-red-800">Algunos registros fallaron</AlertTitle>
+                <AlertDescription className="text-red-700">
                   <details className="mt-2">
-                    <summary className="cursor-pointer">Ver errores</summary>
-                    <ul className="mt-2 text-xs space-y-1">
+                    <summary className="cursor-pointer text-red-600 hover:text-red-800 font-medium">Ver errores</summary>
+                    <ul className="mt-3 text-sm space-y-2 bg-red-100 p-3 rounded border">
                       {importResult.results.errors.map((error: any, idx: number) => (
-                        <li key={idx}>Fila {error.row}: {error.error}</li>
+                        <li key={idx} className="flex items-start gap-2">
+                          <span className="text-red-600 font-medium">Fila {error.row}:</span>
+                          <span>{error.error}</span>
+                        </li>
                       ))}
                     </ul>
                   </details>
@@ -507,8 +654,11 @@ export default function UniversalImportWizard({
               </Alert>
             )}
 
-            <div className="flex justify-end">
-              <Button onClick={onSuccess || onCancel}>
+            <div className="flex justify-end pt-4">
+              <Button 
+                onClick={onSuccess || onCancel}
+                className="px-8 bg-green-600 hover:bg-green-700"
+              >
                 Cerrar
               </Button>
             </div>

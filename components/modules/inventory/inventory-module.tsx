@@ -43,14 +43,12 @@ interface Product {
 
 interface ImportHistory {
   id: string
-  file_name: string
+  original_filename: string
   total_rows: number
   successful_rows: number
   failed_rows: number
   status: string
   created_at: string
-  started_at?: string
-  completed_at?: string
   username: string
   full_name: string
 }
@@ -70,6 +68,27 @@ export default function InventoryModule() {
   const { user } = useAuth()
   const [activeTab, setActiveTab] = useState("products")
 
+  // Helper function to safely format numbers
+  const formatPrice = (price: any): string => {
+    if (price === null || price === undefined || price === '') {
+      return '0.00'
+    }
+    const numPrice = typeof price === 'string' ? parseFloat(price) : price
+    if (isNaN(numPrice)) {
+      return '0.00'
+    }
+    return numPrice.toFixed(2)
+  }
+
+  // Helper function to safely format numbers for display
+  const formatNumber = (value: any): number => {
+    if (value === null || value === undefined || value === '') {
+      return 0
+    }
+    const numValue = typeof value === 'string' ? parseFloat(value) : value
+    return isNaN(numValue) ? 0 : numValue
+  }
+
   // Products state
   const [products, setProducts] = useState<Product[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -78,9 +97,7 @@ export default function InventoryModule() {
   const [statusFilter, setStatusFilter] = useState("")
 
   // Import state
-  const [isImporting, setIsImporting] = useState(false)
-  const [showImportDialog, setShowImportDialog] = useState(false)
-  const [importFile, setImportFile] = useState<File | null>(null)
+  const [showImportWizard, setShowImportWizard] = useState(false)
   const [importHistory, setImportHistory] = useState<ImportHistory[]>([])
 
   // Audit state
@@ -117,18 +134,16 @@ export default function InventoryModule() {
       })
 
       if (response.data) {
-        // Handle paginated response
-        const items = response.data.items || []
-        setProducts(Array.isArray(items) ? items : [])
+        // La API devuelve un objeto con items, extraer el array de productos
+        setProducts(response.data.items || [])
       } else {
-        setProducts([])
-        if (response.error) {
-          toast.error(response.error || "Error loading products")
-        }
+        toast.error(response.error || "Error loading products")
+        setProducts([]) // Asegurar que products sea un array
       }
     } catch (error) {
       toast.error("Error connecting to server")
       console.error("Load products error:", error)
+      setProducts([]) // Asegurar que products sea un array
     } finally {
       setIsLoading(false)
     }
@@ -142,10 +157,7 @@ export default function InventoryModule() {
       })
 
       if (response.data) {
-        const items = response.data.items || response.data || []
-        setImportHistory(Array.isArray(items) ? items : [])
-      } else {
-        setImportHistory([])
+        setImportHistory(response.data.items || [])
       }
     } catch (error) {
       console.error("Load import history error:", error)
@@ -160,10 +172,7 @@ export default function InventoryModule() {
       })
 
       if (response.data) {
-        const items = response.data.items || response.data || []
-        setAuditActivity(Array.isArray(items) ? items : [])
-      } else {
-        setAuditActivity([])
+        setAuditActivity(response.data.items || [])
       }
     } catch (error) {
       console.error("Load audit activity error:", error)
@@ -177,46 +186,6 @@ export default function InventoryModule() {
     loadAuditActivity()
   }, [loadProducts, loadImportHistory, loadAuditActivity])
 
-  // Handle file import
-  const handleFileImport = async () => {
-    if (!importFile) {
-      toast.error("Please select a file")
-      return
-    }
-
-    try {
-      setIsImporting(true)
-
-      const formData = new FormData()
-      formData.append("file", importFile)
-
-      const response = await fetch("/api/v1/inventory/import", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${localStorage.getItem('gde_token')}`
-        },
-        body: formData
-      })
-
-      const result = await response.json()
-
-      if (response.ok) {
-        toast.success(result.message || "File imported successfully")
-        setShowImportDialog(false)
-        setImportFile(null)
-        loadProducts()
-        loadImportHistory()
-        loadAuditActivity()
-      } else {
-        toast.error(result.detail || "Import failed")
-      }
-    } catch (error) {
-      toast.error("Error importing file")
-      console.error("Import error:", error)
-    } finally {
-      setIsImporting(false)
-    }
-  }
 
   // Handle rollback import
   const handleRollbackImport = async (importId: string) => {
@@ -344,15 +313,15 @@ export default function InventoryModule() {
 
   // Filter products
   const filteredProducts = useMemo(() => {
-    if (!products || !Array.isArray(products)) {
+    // Asegurar que products sea un array
+    if (!Array.isArray(products)) {
+      console.warn("Products is not an array:", products)
       return []
     }
-
+    
     return products.filter(product => {
-      if (!product) return false
-
       const matchesSearch = searchQuery === "" ||
-        (product.name && product.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (product.code && product.code.toLowerCase().includes(searchQuery.toLowerCase())) ||
         (product.description && product.description.toLowerCase().includes(searchQuery.toLowerCase()))
 
@@ -365,12 +334,22 @@ export default function InventoryModule() {
 
   // Get stock metrics
   const stockMetrics = useMemo(() => {
-    const safeProducts = products || []
-    const totalProducts = safeProducts.length
-    const totalStock = safeProducts.reduce((sum, product) => sum + product.current_stock, 0)
-    const lowStock = safeProducts.filter(product => product.current_stock <= product.min_stock).length
-    const outOfStock = safeProducts.filter(product => product.current_stock === 0).length
-    const categories = [...new Set(safeProducts.map(product => product.category).filter(Boolean))].length
+    // Asegurar que products sea un array
+    if (!Array.isArray(products)) {
+      return {
+        totalProducts: 0,
+        totalStock: 0,
+        lowStock: 0,
+        outOfStock: 0,
+        categories: 0
+      }
+    }
+    
+    const totalProducts = products.length
+    const totalStock = products.reduce((sum, product) => sum + formatNumber(product.current_stock), 0)
+    const lowStock = products.filter(product => formatNumber(product.current_stock) <= formatNumber(product.min_stock)).length
+    const outOfStock = products.filter(product => formatNumber(product.current_stock) === 0).length
+    const categories = [...new Set(products.map(product => product.category).filter(Boolean))].length
 
     return {
       totalProducts,
@@ -383,11 +362,14 @@ export default function InventoryModule() {
 
   // Get categories for filter
   const categories = useMemo(() => {
+    if (!Array.isArray(products)) {
+      return []
+    }
     return [...new Set(products.map(product => product.category).filter(Boolean))]
   }, [products])
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       {/* Metrics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card>
@@ -395,7 +377,7 @@ export default function InventoryModule() {
             <div className="flex items-center space-x-2">
               <Package className="w-8 h-8 text-blue-600" />
               <div>
-                <p className="text-sm font-medium text-slate-600">Total Productos</p>
+                <p className="text-sm font-medium text-slate-600">Total Products</p>
                 <p className="text-2xl font-bold text-slate-900">{stockMetrics.totalProducts}</p>
               </div>
             </div>
@@ -407,7 +389,7 @@ export default function InventoryModule() {
             <div className="flex items-center space-x-2">
               <Package className="w-8 h-8 text-green-600" />
               <div>
-                <p className="text-sm font-medium text-slate-600">Stock Total</p>
+                <p className="text-sm font-medium text-slate-600">Total Stock</p>
                 <p className="text-2xl font-bold text-slate-900">{stockMetrics.totalStock.toLocaleString()}</p>
               </div>
             </div>
@@ -419,7 +401,7 @@ export default function InventoryModule() {
             <div className="flex items-center space-x-2">
               <AlertTriangle className="w-8 h-8 text-yellow-600" />
               <div>
-                <p className="text-sm font-medium text-slate-600">Stock Bajo</p>
+                <p className="text-sm font-medium text-slate-600">Low Stock</p>
                 <p className="text-2xl font-bold text-slate-900">{stockMetrics.lowStock}</p>
               </div>
             </div>
@@ -431,7 +413,7 @@ export default function InventoryModule() {
             <div className="flex items-center space-x-2">
               <AlertTriangle className="w-8 h-8 text-red-600" />
               <div>
-                <p className="text-sm font-medium text-slate-600">Sin Stock</p>
+                <p className="text-sm font-medium text-slate-600">Out of Stock</p>
                 <p className="text-2xl font-bold text-slate-900">{stockMetrics.outOfStock}</p>
               </div>
             </div>
@@ -443,7 +425,7 @@ export default function InventoryModule() {
             <div className="flex items-center space-x-2">
               <Filter className="w-8 h-8 text-purple-600" />
               <div>
-                <p className="text-sm font-medium text-slate-600">Categorías</p>
+                <p className="text-sm font-medium text-slate-600">Categories</p>
                 <p className="text-2xl font-bold text-slate-900">{stockMetrics.categories}</p>
               </div>
             </div>
@@ -454,10 +436,10 @@ export default function InventoryModule() {
       {/* Main Content */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList>
-          <TabsTrigger value="products">Productos</TabsTrigger>
-          <TabsTrigger value="import">Importar Datos</TabsTrigger>
-          <TabsTrigger value="history">Historial de Importación</TabsTrigger>
-          <TabsTrigger value="audit">Registro de Auditoría</TabsTrigger>
+          <TabsTrigger value="products">Products</TabsTrigger>
+          <TabsTrigger value="import">Import Data</TabsTrigger>
+          <TabsTrigger value="history">Import History</TabsTrigger>
+          <TabsTrigger value="audit">Audit Log</TabsTrigger>
         </TabsList>
 
         {/* Products Tab */}
@@ -466,8 +448,8 @@ export default function InventoryModule() {
             <CardHeader>
               <div className="flex justify-between items-center">
                 <div>
-                  <CardTitle>Inventario de Productos</CardTitle>
-                  <CardDescription>Gestiona tu catálogo de productos y niveles de stock</CardDescription>
+                  <CardTitle>Product Inventory</CardTitle>
+                  <CardDescription>Manage your product catalog and stock levels</CardDescription>
                 </div>
                 <div className="flex space-x-2">
                   <Button
@@ -479,7 +461,7 @@ export default function InventoryModule() {
                     className="bg-blue-600 hover:bg-blue-700"
                   >
                     <Plus className="w-4 h-4 mr-2" />
-                    Agregar Producto
+                    Add Product
                   </Button>
                 </div>
               </div>
@@ -489,7 +471,7 @@ export default function InventoryModule() {
               <div className="flex space-x-4 mb-6">
                 <div className="flex-1">
                   <Input
-                    placeholder="Buscar productos..."
+                    placeholder="Search products..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full"
@@ -497,10 +479,10 @@ export default function InventoryModule() {
                 </div>
                 <Select value={categoryFilter} onValueChange={setCategoryFilter}>
                   <SelectTrigger className="w-48">
-                    <SelectValue placeholder="Todas las Categorías" />
+                    <SelectValue placeholder="All Categories" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Todas las Categorías</SelectItem>
+                    <SelectItem value="all">All Categories</SelectItem>
                     {categories.map(category => (
                       <SelectItem key={category} value={category}>{category}</SelectItem>
                     ))}
@@ -508,12 +490,12 @@ export default function InventoryModule() {
                 </Select>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
                   <SelectTrigger className="w-32">
-                    <SelectValue placeholder="Todos los Estados" />
+                    <SelectValue placeholder="All Status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Todos los Estados</SelectItem>
-                    <SelectItem value="active">Activo</SelectItem>
-                    <SelectItem value="inactive">Inactivo</SelectItem>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
                     <SelectItem value="discontinued">Discontinued</SelectItem>
                   </SelectContent>
                 </Select>
@@ -524,14 +506,14 @@ export default function InventoryModule() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Código</TableHead>
-                      <TableHead>Nombre</TableHead>
-                      <TableHead>Categoría</TableHead>
-                      <TableHead>Stock Actual</TableHead>
-                      <TableHead>Stock Mínimo</TableHead>
-                      <TableHead>Precio de Venta</TableHead>
-                      <TableHead>Estado</TableHead>
-                      <TableHead>Acciones</TableHead>
+                      <TableHead>Code</TableHead>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Category</TableHead>
+                      <TableHead>Current Stock</TableHead>
+                      <TableHead>Min Stock</TableHead>
+                      <TableHead>Sale Price</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -541,29 +523,29 @@ export default function InventoryModule() {
                           Loading products...
                         </TableCell>
                       </TableRow>
-                    ) : (filteredProducts || []).length === 0 ? (
+                    ) : filteredProducts.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={8} className="text-center py-8">
-                          No se encontraron productos
+                          No products found
                         </TableCell>
                       </TableRow>
                     ) : (
-                      (filteredProducts || []).map((product) => (
+                      filteredProducts.map((product) => (
                         <TableRow key={product.id}>
                           <TableCell className="font-medium">{product.code}</TableCell>
                           <TableCell>{product.name}</TableCell>
                           <TableCell>{product.category || "-"}</TableCell>
                           <TableCell>
                             <span className={`font-semibold ${
-                              product.current_stock === 0 ? "text-red-600" :
-                              product.current_stock <= product.min_stock ? "text-yellow-600" :
+                              formatNumber(product.current_stock) === 0 ? "text-red-600" :
+                              formatNumber(product.current_stock) <= formatNumber(product.min_stock) ? "text-yellow-600" :
                               "text-green-600"
                             }`}>
-                              {product.current_stock}
+                              {formatNumber(product.current_stock)}
                             </span>
                           </TableCell>
-                          <TableCell>{product.min_stock}</TableCell>
-                          <TableCell>${Number(product.sale_price || 0).toFixed(2)}</TableCell>
+                          <TableCell>{formatNumber(product.min_stock)}</TableCell>
+                          <TableCell>${formatPrice(product.sale_price)}</TableCell>
                           <TableCell>
                             <Badge variant={product.status === "active" ? "default" : "secondary"}>
                               {product.status}
@@ -604,9 +586,9 @@ export default function InventoryModule() {
         <TabsContent value="import" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Importar Datos de Inventario</CardTitle>
+              <CardTitle>Import Inventory Data</CardTitle>
               <CardDescription>
-                Sube archivos Excel o CSV para importar/actualizar datos de productos en lote
+                Upload Excel or CSV files to bulk import/update product data
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -618,7 +600,7 @@ export default function InventoryModule() {
                     <p className="text-sm text-slate-600">
                       Supports Excel (.xlsx, .xls) and CSV files
                     </p>
-                    <Button onClick={() => setShowImportDialog(true)}>
+                    <Button onClick={() => setShowImportWizard(true)}>
                       Select File
                     </Button>
                   </div>
@@ -640,38 +622,38 @@ export default function InventoryModule() {
         <TabsContent value="history" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Historial de Importación</CardTitle>
-              <CardDescription>Ver importaciones de inventario anteriores y sus resultados</CardDescription>
+              <CardTitle>Import History</CardTitle>
+              <CardDescription>View past inventory imports and their results</CardDescription>
             </CardHeader>
             <CardContent>
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Nombre del Archivo</TableHead>
-                    <TableHead>Importado Por</TableHead>
-                    <TableHead>Total Filas</TableHead>
-                    <TableHead>Exitosos</TableHead>
-                    <TableHead>Fallidos</TableHead>
-                    <TableHead>Estado</TableHead>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead>Acciones</TableHead>
+                    <TableHead>File Name</TableHead>
+                    <TableHead>Imported By</TableHead>
+                    <TableHead>Total Rows</TableHead>
+                    <TableHead>Successful</TableHead>
+                    <TableHead>Failed</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(importHistory || []).length === 0 ? (
+                  {importHistory.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={8} className="text-center py-8">
-                        No se encontró historial de importación
+                        No import history found
                       </TableCell>
                     </TableRow>
                   ) : (
-                    (importHistory || []).map((import_) => (
+                    importHistory.map((import_) => (
                       <TableRow key={import_.id}>
-                        <TableCell className="font-medium">{import_.file_name}</TableCell>
+                        <TableCell className="font-medium">{import_.original_filename}</TableCell>
                         <TableCell>{import_.full_name || import_.username}</TableCell>
-                        <TableCell>{import_.total_rows || 0}</TableCell>
-                        <TableCell className="text-green-600">{import_.successful_rows || 0}</TableCell>
-                        <TableCell className="text-red-600">{import_.failed_rows || 0}</TableCell>
+                        <TableCell>{import_.total_rows}</TableCell>
+                        <TableCell className="text-green-600">{import_.successful_rows}</TableCell>
+                        <TableCell className="text-red-600">{import_.failed_rows}</TableCell>
                         <TableCell>
                           <Badge variant={
                             import_.status === "completed" ? "default" :
@@ -709,28 +691,28 @@ export default function InventoryModule() {
         <TabsContent value="audit" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Actividad de Auditoría</CardTitle>
-              <CardDescription>Rastrea todos los cambios de inventario y quién los realizó</CardDescription>
+              <CardTitle>Audit Activity</CardTitle>
+              <CardDescription>Track all inventory changes and who made them</CardDescription>
             </CardHeader>
             <CardContent>
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Acción</TableHead>
-                    <TableHead>Usuario</TableHead>
-                    <TableHead>Producto</TableHead>
-                    <TableHead>Fecha</TableHead>
+                    <TableHead>Action</TableHead>
+                    <TableHead>User</TableHead>
+                    <TableHead>Product</TableHead>
+                    <TableHead>Date</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(auditActivity || []).length === 0 ? (
+                  {auditActivity.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={4} className="text-center py-8">
-                        No se encontró actividad de auditoría
+                        No audit activity found
                       </TableCell>
                     </TableRow>
                   ) : (
-                    (auditActivity || []).map((activity) => (
+                    auditActivity.map((activity) => (
                       <TableRow key={activity.id}>
                         <TableCell>
                           <div className="flex items-center space-x-2">
@@ -765,39 +747,37 @@ export default function InventoryModule() {
         </TabsContent>
       </Tabs>
 
-      {/* Import Dialog - Enhanced */}
-      <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
-        <DialogContent className="sm:max-w-6xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Importar Productos al Inventario</DialogTitle>
-            <DialogDescription>
-              Asistente de importación con validación avanzada
-            </DialogDescription>
-          </DialogHeader>
-          <InventoryImportWizard
-            onImportComplete={() => {
-              setShowImportDialog(false)
-              loadProducts()
-              loadImportHistory()
-              loadAuditActivity()
-            }}
-            onCancel={() => setShowImportDialog(false)}
-          />
-        </DialogContent>
-      </Dialog>
+      {/* Inventory Import Wizard */}
+      {showImportWizard && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-7xl w-full max-h-[95vh] overflow-hidden flex flex-col">
+            <InventoryImportWizard
+              isOpen={showImportWizard}
+              onClose={() => setShowImportWizard(false)}
+              onImportComplete={() => {
+                setShowImportWizard(false)
+                loadProducts()
+                loadImportHistory()
+                loadAuditActivity()
+              }}
+              onCancel={() => setShowImportWizard(false)}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Product Dialog */}
       <Dialog open={showProductDialog} onOpenChange={setShowProductDialog}>
         <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingProduct ? "Editar Producto" : "Agregar Producto"}</DialogTitle>
+            <DialogTitle>{editingProduct ? "Edit Product" : "Add Product"}</DialogTitle>
             <DialogDescription>
-              {editingProduct ? "Actualizar información del producto" : "Agregar un nuevo producto al inventario"}
+              {editingProduct ? "Update product information" : "Add a new product to inventory"}
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="code">Código del Producto *</Label>
+              <Label htmlFor="code">Product Code *</Label>
               <Input
                 id="code"
                 value={productForm.code}
@@ -806,25 +786,25 @@ export default function InventoryModule() {
               />
             </div>
             <div>
-              <Label htmlFor="name">Nombre del Producto *</Label>
+              <Label htmlFor="name">Product Name *</Label>
               <Input
                 id="name"
                 value={productForm.name}
                 onChange={(e) => setProductForm(prev => ({ ...prev, name: e.target.value }))}
-                placeholder="Nombre del producto"
+                placeholder="Product name"
               />
             </div>
             <div className="col-span-2">
-              <Label htmlFor="description">Descripción</Label>
+              <Label htmlFor="description">Description</Label>
               <Textarea
                 id="description"
                 value={productForm.description}
                 onChange={(e) => setProductForm(prev => ({ ...prev, description: e.target.value }))}
-                placeholder="Descripción del producto"
+                placeholder="Product description"
               />
             </div>
             <div>
-              <Label htmlFor="category">Categoría</Label>
+              <Label htmlFor="category">Category</Label>
               <Input
                 id="category"
                 value={productForm.category}
@@ -833,7 +813,7 @@ export default function InventoryModule() {
               />
             </div>
             <div>
-              <Label htmlFor="brand">Marca</Label>
+              <Label htmlFor="brand">Brand</Label>
               <Input
                 id="brand"
                 value={productForm.brand}
@@ -842,7 +822,7 @@ export default function InventoryModule() {
               />
             </div>
             <div>
-              <Label htmlFor="model">Modelo</Label>
+              <Label htmlFor="model">Model</Label>
               <Input
                 id="model"
                 value={productForm.model}
@@ -851,7 +831,7 @@ export default function InventoryModule() {
               />
             </div>
             <div>
-              <Label htmlFor="unit_of_measure">Unidad de Medida</Label>
+              <Label htmlFor="unit_of_measure">Unit of Measure</Label>
               <Select value={productForm.unit_of_measure} onValueChange={(value) => setProductForm(prev => ({ ...prev, unit_of_measure: value }))}>
                 <SelectTrigger>
                   <SelectValue />
@@ -866,7 +846,7 @@ export default function InventoryModule() {
               </Select>
             </div>
             <div>
-              <Label htmlFor="purchase_price">Precio de Compra</Label>
+              <Label htmlFor="purchase_price">Purchase Price</Label>
               <Input
                 id="purchase_price"
                 type="number"
@@ -876,7 +856,7 @@ export default function InventoryModule() {
               />
             </div>
             <div>
-              <Label htmlFor="sale_price">Precio de Venta</Label>
+              <Label htmlFor="sale_price">Sale Price</Label>
               <Input
                 id="sale_price"
                 type="number"
@@ -886,7 +866,7 @@ export default function InventoryModule() {
               />
             </div>
             <div>
-              <Label htmlFor="current_stock">Stock Actual</Label>
+              <Label htmlFor="current_stock">Current Stock</Label>
               <Input
                 id="current_stock"
                 type="number"
@@ -895,7 +875,7 @@ export default function InventoryModule() {
               />
             </div>
             <div>
-              <Label htmlFor="min_stock">Stock Mínimo</Label>
+              <Label htmlFor="min_stock">Min Stock</Label>
               <Input
                 id="min_stock"
                 type="number"
@@ -904,7 +884,7 @@ export default function InventoryModule() {
               />
             </div>
             <div>
-              <Label htmlFor="max_stock">Stock Máximo</Label>
+              <Label htmlFor="max_stock">Max Stock</Label>
               <Input
                 id="max_stock"
                 type="number"
@@ -913,7 +893,7 @@ export default function InventoryModule() {
               />
             </div>
             <div>
-              <Label htmlFor="location">Ubicación</Label>
+              <Label htmlFor="location">Location</Label>
               <Input
                 id="location"
                 value={productForm.location}
@@ -922,7 +902,7 @@ export default function InventoryModule() {
               />
             </div>
             <div>
-              <Label htmlFor="barcode">Código de Barras</Label>
+              <Label htmlFor="barcode">Barcode</Label>
               <Input
                 id="barcode"
                 value={productForm.barcode}
@@ -931,7 +911,7 @@ export default function InventoryModule() {
               />
             </div>
             <div>
-              <Label htmlFor="weight">Peso (kg)</Label>
+              <Label htmlFor="weight">Weight (kg)</Label>
               <Input
                 id="weight"
                 type="number"
@@ -941,7 +921,7 @@ export default function InventoryModule() {
               />
             </div>
             <div>
-              <Label htmlFor="dimensions">Dimensiones</Label>
+              <Label htmlFor="dimensions">Dimensions</Label>
               <Input
                 id="dimensions"
                 value={productForm.dimensions}
@@ -952,10 +932,10 @@ export default function InventoryModule() {
           </div>
           <div className="flex justify-end space-x-2 mt-6">
             <Button variant="outline" onClick={() => setShowProductDialog(false)}>
-              Cancelar
+              Cancel
             </Button>
             <Button onClick={handleSaveProduct}>
-              {editingProduct ? "Actualizar" : "Crear"}
+              {editingProduct ? "Update" : "Create"}
             </Button>
           </div>
         </DialogContent>

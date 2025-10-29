@@ -92,6 +92,118 @@ export default function ManagementModule() {
   })
   const [loading, setLoading] = useState(true)
 
+  // Calculate total costs from current data
+  const calculateTotalCosts = useCallback(() => {
+    if (!managementData.costos || managementData.costos.length === 0) return 0
+    
+    return managementData.costos.reduce((total, cost) => {
+      const amount = parseFloat(cost.amount || cost.monto || 0)
+      return total + (isNaN(amount) ? 0 : amount)
+    }, 0)
+  }, [managementData.costos])
+
+  // Calculate weighted average cost
+  const calculateWeightedAverageCost = useCallback(() => {
+    if (!managementData.costos || managementData.costos.length === 0) return 0
+    
+    const totalAmount = calculateTotalCosts()
+    const totalItems = managementData.costos.length
+    
+    return totalItems > 0 ? totalAmount / totalItems : 0
+  }, [managementData.costos, calculateTotalCosts])
+
+  // Clear all costs
+  const handleClearCosts = useCallback(async () => {
+    if (managementData.costos.length === 0) {
+      toast.info("No hay costos para limpiar")
+      return
+    }
+
+    if (!window.confirm(`¿Estás seguro de que quieres limpiar todos los ${managementData.costos.length} costos? Esta acción no se puede deshacer.`)) {
+      return
+    }
+
+    try {
+      const response = await apiClient.request('/accounting/costs/clear', {
+        method: 'DELETE'
+      })
+
+      if (response.success) {
+        setManagementData(prev => ({
+          ...prev,
+          costos: []
+        }))
+        setSelectedRows(prev => ({
+          ...prev,
+          costos: []
+        }))
+        toast.success(`Se limpiaron ${response.deleted_count || managementData.costos.length} costos`)
+      } else {
+        toast.error("Error al limpiar los costos")
+      }
+    } catch (error) {
+      console.error('Error clearing costs:', error)
+      toast.error("Error al conectar con el servidor")
+    }
+  }, [managementData.costos.length])
+
+  // Load management data
+  const loadManagementData = useCallback(async () => {
+    try {
+      setLoading(true)
+      
+      // Load financial summary
+      const summaryResponse = await apiClient.request('/accounting/financial-summary')
+      if (summaryResponse.data) {
+        const summary = summaryResponse.data
+        setKpiFinancieros(prev => ({
+          ...prev,
+          totalCostos: summary.costs?.total || 0,
+          totalGastos: summary.expenses?.total || 0,
+          totalCapital: summary.capital?.total || 0
+        }))
+      }
+      
+      // Load costs
+      const costsResponse = await apiClient.request('/accounting/costs')
+      if (costsResponse.data) {
+        setManagementData(prev => ({
+          ...prev,
+          costos: costsResponse.data.items || []
+        }))
+      }
+      
+      // Load expenses
+      const expensesResponse = await apiClient.request('/accounting/expenses')
+      if (expensesResponse.data) {
+        setManagementData(prev => ({
+          ...prev,
+          gastos: expensesResponse.data.items || []
+        }))
+      }
+      
+      // Load capital
+      const capitalResponse = await apiClient.request('/accounting/capital')
+      if (capitalResponse.data) {
+        setManagementData(prev => ({
+          ...prev,
+          capital: capitalResponse.data.items || []
+        }))
+      }
+      
+    } catch (error) {
+      console.error('Error loading management data:', error)
+      toast.error('Error al cargar los datos')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  // Load data on component mount
+  useEffect(() => {
+    loadManagementData()
+  }, [loadManagementData])
+
   const fetchCosts = async () => {
     try {
       const response = await apiClient.request('/accounting/costs?page=1&size=50', {
@@ -208,6 +320,39 @@ export default function ManagementModule() {
 
   const handleCellSave = useCallback(() => {
     if (!editingCell) return
+    
+    // Validation for cost entries
+    if (editingCell.tab === 'costos') {
+      // Validate amount field
+      if (editingCell.field === 'monto' || editingCell.field === 'amount') {
+        const amount = parseFloat(editValue)
+        if (isNaN(amount) || amount < 0) {
+          toast.error("El monto debe ser un número válido mayor o igual a 0")
+          return
+        }
+      }
+      
+      // Validate required fields
+      if (editingCell.field === 'name' || editingCell.field === 'categoria') {
+        if (!editValue.trim()) {
+          toast.error("El nombre/categoría es requerido")
+          return
+        }
+      }
+      
+      // Check for duplicates in name field
+      if (editingCell.field === 'name') {
+        const currentData = managementData[editingCell.tab]
+        const duplicateExists = currentData.some(item => 
+          item.id !== editingCell.rowId && 
+          item.name?.toLowerCase().trim() === editValue.toLowerCase().trim()
+        )
+        if (duplicateExists) {
+          toast.error("Ya existe un costo con este nombre")
+          return
+        }
+      }
+    }
     
     setManagementData(prev => {
       const newData = { ...prev }
@@ -496,11 +641,10 @@ export default function ManagementModule() {
       {!loading && (
         <>
           <Tabs defaultValue="costos" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="costos">Costos</TabsTrigger>
           <TabsTrigger value="gastos">Gastos</TabsTrigger>
           <TabsTrigger value="capital">Capital</TabsTrigger>
-          <TabsTrigger value="kpis">KPIs Financieros</TabsTrigger>
         </TabsList>
 
         <TabsContent value="costos" className="space-y-4">
@@ -567,6 +711,15 @@ export default function ManagementModule() {
                 <RowsIcon className="w-4 h-4 mr-2" />
                 Agregar Fila
               </Button>
+              <Button 
+                onClick={handleClearCosts} 
+                size="sm" 
+                variant="outline"
+                className="text-red-600 border-red-300 hover:bg-red-50"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Limpiar Tabla
+              </Button>
               {hasChanges && (
                 <Button onClick={() => { setHasChanges(false); toast.success("Cambios guardados"); }} size="sm" variant="default">
                   <Save className="w-4 h-4 mr-2" />
@@ -576,13 +729,13 @@ export default function ManagementModule() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <Card className="border-red-200 bg-red-50">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-red-800">Total Costos</p>
-                    <p className="text-2xl font-bold text-red-600">{formatCurrency(kpiFinancieros.totalCostos)}</p>
+                    <p className="text-2xl font-bold text-red-600">{formatCurrency(calculateTotalCosts())}</p>
                   </div>
                   <DollarSign className="w-8 h-8 text-red-600" />
                 </div>
@@ -594,21 +747,9 @@ export default function ManagementModule() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-blue-800">Costo Promedio Ponderado</p>
-                    <p className="text-2xl font-bold text-blue-600">{formatCurrency(kpiFinancieros.costo_promedio_ponderado, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                    <p className="text-2xl font-bold text-blue-600">{formatCurrency(calculateWeightedAverageCost(), {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
                   </div>
                   <BarChart3 className="w-8 h-8 text-blue-600" />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-green-200 bg-green-50">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-green-800">Margen Bruto</p>
-                    <p className="text-2xl font-bold text-green-600">{kpiFinancieros.margenBruto}%</p>
-                  </div>
-                  <TrendingUp className="w-8 h-8 text-green-600" />
                 </div>
               </CardContent>
             </Card>
@@ -923,127 +1064,88 @@ export default function ManagementModule() {
             </CardContent>
           </Card>
         </TabsContent>
-
-        <TabsContent value="kpis" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <DollarSign className="w-5 h-5 text-green-600" />
-                  Utilidad Bruta
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold text-green-600 mb-2">
-                  {formatCurrency(kpiFinancieros.utilidadBruta)}
-                </div>
-                <p className="text-sm text-muted-foreground">Ventas - Costo de Ventas</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 text-blue-600" />
-                  Margen Bruto
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold text-blue-600 mb-2">{kpiFinancieros.margenBruto}%</div>
-                <p className="text-sm text-muted-foreground">Utilidad Bruta / Ventas</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <RotateCcw className="w-5 h-5 text-purple-600" />
-                  Rotación Inventario
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold text-purple-600 mb-2">{kpiFinancieros.rotacionInventario}x</div>
-                <p className="text-sm text-muted-foreground">Veces por año</p>
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Estado de Resultados Simplificado</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
-                  <span className="font-medium">Ventas Totales</span>
-                  <span className="font-bold text-green-600">{formatCurrency(kpiFinancieros.ventasTotales)}</span>
-                </div>
-                <div className="flex justify-between items-center p-3 bg-red-50 rounded-lg">
-                  <span className="font-medium">Costo de Ventas</span>
-                  <span className="font-bold text-red-600">-{formatCurrency(kpiFinancieros.totalCostos)}</span>
-                </div>
-                <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
-                  <span className="font-medium">Utilidad Bruta</span>
-                  <span className="font-bold text-blue-600">{formatCurrency(kpiFinancieros.utilidadBruta)}</span>
-                </div>
-                <div className="flex justify-between items-center p-3 bg-orange-50 rounded-lg">
-                  <span className="font-medium">Gastos Operativos</span>
-                  <span className="font-bold text-orange-600">-{formatCurrency(kpiFinancieros.totalGastos)}</span>
-                </div>
-                <div className="flex justify-between items-center p-3 bg-purple-50 rounded-lg border-2 border-purple-200">
-                  <span className="font-bold">Utilidad Neta</span>
-                  <span className="font-bold text-purple-600 text-xl">{formatCurrency(kpiFinancieros.utilidadBruta - kpiFinancieros.totalGastos)}</span>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Análisis de Costos</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <div className="flex justify-between p-3 bg-red-50 rounded-lg">
-                    <span className="font-medium">Costo de Ventas</span>
-                    <span className="font-bold text-red-600">{formatPercentage(kpiFinancieros.porc_costos_ventas)}%</span>
-                  </div>
-                </div>
-                <div>
-                  <div className="flex justify-between p-3 bg-orange-50 rounded-lg">
-                    <span className="font-medium">Gastos Administrativos</span>
-                    <span className="font-bold text-orange-600">{formatPercentage(kpiFinancieros.porc_gastos_admin)}%</span>
-                  </div>
-                </div>
-                <div>
-                  <div className="flex justify-between p-3 bg-green-50 rounded-lg">
-                    <span className="font-medium">Utilidad Neta</span>
-                    <span className="font-bold text-green-600">{formatPercentage(kpiFinancieros.porc_utilidad_neta)}%</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
       </Tabs>
       
-      <BulkFinancialImportModal 
-        type="costos"
-        isOpen={showCostImportModal} 
-        onClose={() => setShowCostImportModal(false)} 
-      />
-      
-      <BulkFinancialImportModal 
-        type="gastos"
-        isOpen={showExpenseImportModal} 
-        onClose={() => setShowExpenseImportModal(false)} 
-      />
-      
-      <BulkFinancialImportModal
-        type="capital"
-        isOpen={showCapitalImportModal}
-        onClose={() => setShowCapitalImportModal(false)}
-      />
+      {/* Universal Import Wizards */}
+      <Dialog open={showCostsImport} onOpenChange={setShowCostsImport}>
+        <DialogContent className="max-w-5xl max-h-[95vh] overflow-hidden">
+          <DialogHeader className="pb-4">
+            <DialogTitle className="text-xl font-semibold">Importar Costos</DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground">
+              Importe costos de producción y operaciones con validación automática
+            </DialogDescription>
+          </DialogHeader>
+          <div className="overflow-y-auto max-h-[calc(95vh-120px)]">
+            <UniversalImportWizard
+              validateEndpoint="/accounting/costs/import/validate"
+              importEndpoint="/accounting/costs/import/import"
+              importType="costs"
+              moduleName="Costos"
+              onSuccess={() => {
+                setShowCostsImport(false)
+                loadManagementData()
+                toast.success("Costos importados exitosamente")
+              }}
+              onCancel={() => setShowCostsImport(false)}
+              allowUpdate={true}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
 
+      <Dialog open={showExpensesImport} onOpenChange={setShowExpensesImport}>
+        <DialogContent className="max-w-5xl max-h-[95vh] overflow-hidden">
+          <DialogHeader className="pb-4">
+            <DialogTitle className="text-xl font-semibold">Importar Gastos</DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground">
+              Importe gastos operativos y administrativos con validación automática
+            </DialogDescription>
+          </DialogHeader>
+          <div className="overflow-y-auto max-h-[calc(95vh-120px)]">
+            <UniversalImportWizard
+              validateEndpoint="/accounting/expenses/import/validate"
+              importEndpoint="/accounting/expenses/import/import"
+              importType="expenses"
+              moduleName="Gastos"
+              onSuccess={() => {
+                setShowExpensesImport(false)
+                loadManagementData()
+                toast.success("Gastos importados exitosamente")
+              }}
+              onCancel={() => setShowExpensesImport(false)}
+              allowUpdate={true}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showCapitalImport} onOpenChange={setShowCapitalImport}>
+        <DialogContent className="max-w-5xl max-h-[95vh] overflow-hidden">
+          <DialogHeader className="pb-4">
+            <DialogTitle className="text-xl font-semibold">Importar Movimientos de Capital</DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground">
+              Importe inversiones y movimientos de capital con validación automática
+            </DialogDescription>
+          </DialogHeader>
+          <div className="overflow-y-auto max-h-[calc(95vh-120px)]">
+            <UniversalImportWizard
+              validateEndpoint="/accounting/capital/import/validate"
+              importEndpoint="/accounting/capital/import/import"
+              importType="capital"
+              moduleName="Capital"
+              onSuccess={() => {
+                setShowCapitalImport(false)
+                loadManagementData()
+                toast.success("Movimientos de capital importados exitosamente")
+              }}
+              onCancel={() => setShowCapitalImport(false)}
+              allowUpdate={false}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Individual Modals */}
       <CostModal
         isOpen={showCostModal}
         onClose={() => setShowCostModal(false)}
@@ -1064,83 +1166,6 @@ export default function ManagementModule() {
         onSave={handleSaveCapital}
         editingCapital={editingItem}
       />
-
-      {/* Universal Import Wizards */}
-      
-      {/* Import Costos */}
-      <Dialog open={showCostsImport} onOpenChange={setShowCostsImport}>
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Importar Costos</DialogTitle>
-            <DialogDescription>
-              Importe costos de producción y operaciones con validación automática
-            </DialogDescription>
-          </DialogHeader>
-          <UniversalImportWizard
-            validateEndpoint="/accounting/costs/import/validate"
-            importEndpoint="/accounting/costs/import/import"
-            importType="costs"
-            moduleName="Costos"
-            onSuccess={() => {
-              setShowCostsImport(false)
-              fetchManagementData()
-              toast.success("Costos importados exitosamente")
-            }}
-            onCancel={() => setShowCostsImport(false)}
-            allowUpdate={true}
-          />
-        </DialogContent>
-      </Dialog>
-
-      {/* Import Gastos */}
-      <Dialog open={showExpensesImport} onOpenChange={setShowExpensesImport}>
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Importar Gastos</DialogTitle>
-            <DialogDescription>
-              Importe gastos operativos y administrativos con validación automática
-            </DialogDescription>
-          </DialogHeader>
-          <UniversalImportWizard
-            validateEndpoint="/accounting/expenses/import/validate"
-            importEndpoint="/accounting/expenses/import/import"
-            importType="expenses"
-            moduleName="Gastos"
-            onSuccess={() => {
-              setShowExpensesImport(false)
-              fetchManagementData()
-              toast.success("Gastos importados exitosamente")
-            }}
-            onCancel={() => setShowExpensesImport(false)}
-            allowUpdate={true}
-          />
-        </DialogContent>
-      </Dialog>
-
-      {/* Import Capital */}
-      <Dialog open={showCapitalImport} onOpenChange={setShowCapitalImport}>
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Importar Movimientos de Capital</DialogTitle>
-            <DialogDescription>
-              Importe inversiones y movimientos de capital con validación automática
-            </DialogDescription>
-          </DialogHeader>
-          <UniversalImportWizard
-            validateEndpoint="/accounting/capital/import/validate"
-            importEndpoint="/accounting/capital/import/import"
-            importType="capital"
-            moduleName="Capital"
-            onSuccess={() => {
-              setShowCapitalImport(false)
-              fetchManagementData()
-              toast.success("Movimientos de capital importados exitosamente")
-            }}
-            onCancel={() => setShowCapitalImport(false)}
-            allowUpdate={false}
-          />
-        </DialogContent>
-      </Dialog>
         </>
       )}
     </div>

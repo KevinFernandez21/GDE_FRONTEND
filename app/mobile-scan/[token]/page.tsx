@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { useParams } from "next/navigation"
-import { Scan, RefreshCw, Check, X, ChevronLeft, MapPin, FileText, Package, Send, Camera, CameraOff, ArrowUp, ArrowDown, QrCode } from "lucide-react"
+import { Scan, RefreshCw, Check, X, ChevronLeft, MapPin, FileText, Package, Send, Camera, CameraOff, ArrowUp, ArrowDown, QrCode, Pause, Square } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -388,248 +388,167 @@ export default function MobileScanPage() {
         </div>
       </div>
 
-      <div className="max-w-md mx-auto px-4 py-6 space-y-6">
-        {/* Escanear Código Card */}
-        <Card className="bg-white">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg">Escanear Código</CardTitle>
-            <CardDescription>
-              Escanea códigos de barras o ingrésalos manualmente
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Scanner Options */}
-            <div className="grid grid-cols-2 gap-2">
+      <div className="max-w-md mx-auto px-4 py-6">
+        {/* Main Card */}
+        <Card className="bg-white border-2 border-blue-200">
+          <CardContent className="p-6">
+            {/* Session Info */}
+            <div className="text-center mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">Pistoleo Móvil</h2>
+              <p className="text-gray-600">{session.session_name || "Sesión Demo"}</p>
+              {!ipLoading && deviceIP && (
+                <p className="text-sm text-gray-500">
+                  {isProduction ? `URL: ${deviceIP}` : `IP: ${deviceIP}`}
+                </p>
+              )}
+              <div className="flex items-center justify-center gap-2 mt-2">
+                <Badge className="bg-blue-600 text-white">Activa</Badge>
+                <span className="text-sm text-gray-500">{session.scans_count} escaneos</span>
+              </div>
+            </div>
+
+            {/* Movement Type Selection */}
+            <div className="text-center mb-6">
+              <h3 className="text-lg font-semibold mb-4">Tipo de Movimiento</h3>
+              <div className="flex gap-4 justify-center">
+                <Button
+                  size="lg"
+                  className={`h-20 w-32 text-lg ${
+                    movementType === 'entrada' 
+                      ? 'bg-green-600 hover:bg-green-700 text-white shadow-lg' 
+                      : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                  }`}
+                  onClick={() => setMovementType('entrada')}
+                >
+                  <div className="flex flex-col items-center gap-2">
+                    <ArrowUp className="w-8 h-8 text-green-600" />
+                    <span className="font-bold">Entrada</span>
+                    <span className="text-xs">Suma al inventario</span>
+                  </div>
+                </Button>
+                
+                <Button
+                  size="lg"
+                  className={`h-20 w-32 text-lg ${
+                    movementType === 'salida' 
+                      ? 'bg-red-600 hover:bg-red-700 text-white shadow-lg' 
+                      : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                  }`}
+                  onClick={() => setMovementType('salida')}
+                >
+                  <div className="flex flex-col items-center gap-2">
+                    <ArrowDown className="w-8 h-8 text-red-600" />
+                    <span className="font-bold">Salida</span>
+                    <span className="text-xs">Resta del inventario</span>
+                  </div>
+                </Button>
+              </div>
+            </div>
+
+            {/* Camera Button */}
+            <div className="text-center mb-4">
               <Button
-                variant="outline"
+                size="lg"
+                className="bg-blue-600 hover:bg-blue-700 text-white px-12 py-6 text-xl font-bold shadow-lg"
                 onClick={() => {
-                  setIsBarcodeScannerActive(!isBarcodeScannerActive)
-                  setUseSimpleCamera(false)
+                  if (isBarcodeScannerActive) {
+                    setIsBarcodeScannerActive(false)
+                    toast.info("Cámara desactivada")
+                  } else {
+                    setIsBarcodeScannerActive(true)
+                    toast.info("Iniciando cámara para escaneo...")
+                  }
                 }}
-                className="flex flex-col gap-1 h-auto p-3"
               >
-                <Scan className="w-5 h-5" />
-                <span className="text-xs">Escáner Avanzado</span>
+                <Camera className="w-8 h-8 mr-4" />
+                {isBarcodeScannerActive ? 'Detener Cámara' : 'Iniciar Cámara'}
               </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setUseSimpleCamera(!useSimpleCamera)
-                  setIsBarcodeScannerActive(false)
-                }}
-                className="flex flex-col gap-1 h-auto p-3"
-              >
-                <Camera className="w-5 h-5" />
-                <span className="text-xs">Cámara Simple</span>
-              </Button>
+              <p className="text-sm text-gray-500 mt-3">
+                Modo: {movementType === 'entrada' ? 'Entrada' : 'Salida'}
+              </p>
             </div>
 
             {/* Camera Feed */}
             {isBarcodeScannerActive && (
-              <BarcodeScanner
-                onScan={handleBarcodeScan}
-                isActive={isBarcodeScannerActive}
-                onToggle={() => setIsBarcodeScannerActive(!isBarcodeScannerActive)}
-              />
-            )}
-
-            {useSimpleCamera && (
-              <SimpleCamera
-                onToggle={() => setUseSimpleCamera(!useSimpleCamera)}
-                isActive={useSimpleCamera}
-              />
-            )}
-
-            {/* Manual Input */}
-            {!isBarcodeScannerActive && !useSimpleCamera && (
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Escanea o escribe el código de barras...
-                  </label>
-                  <Input
-                    ref={barcodeInputRef}
-                    value={scanBarcode}
-                    onChange={(e) => setScanBarcode(e.target.value)}
-                    placeholder="Ej: G00045, 1234567890..."
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter') {
-                        submitScan()
-                      }
-                    }}
-                    className="text-lg font-mono border-blue-500 focus:border-blue-600"
-                    autoComplete="off"
-                    autoCapitalize="off"
-                    autoCorrect="off"
-                  />
-                </div>
-
-                {/* Type Selection */}
-                <div className="grid grid-cols-3 gap-2">
-                  <Button
-                    variant={scanType === 'guide' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setScanType('guide')}
-                    className="flex flex-col gap-1 h-auto p-2"
-                  >
-                    <FileText className="w-4 h-4" />
-                    <span className="text-xs">Guía</span>
-                  </Button>
-                  <Button
-                    variant={scanType === 'product' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setScanType('product')}
-                    className="flex flex-col gap-1 h-auto p-2"
-                  >
-                    <Package className="w-4 h-4" />
-                    <span className="text-xs">Producto</span>
-                  </Button>
-                  <Button
-                    variant={scanType === 'package' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setScanType('package')}
-                    className="flex flex-col gap-1 h-auto p-2"
-                  >
-                    <Package className="w-4 h-4" />
-                    <span className="text-xs">Paquete</span>
-                  </Button>
-                </div>
-
-                {/* Movement Type for Guides */}
-                {scanType === 'guide' && (
-                  <div className="space-y-2">
-                    <label className="block text-sm font-medium text-gray-700">
-                      Tipo de Movimiento
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button
-                        variant={movementType === 'entrada' ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => setMovementType('entrada')}
-                        className="flex items-center gap-2 h-auto p-3"
-                      >
-                        <ArrowUp className="w-4 h-4 text-green-600" />
-                        <span>Entrada</span>
-                      </Button>
-                      <Button
-                        variant={movementType === 'salida' ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => setMovementType('salida')}
-                        className="flex items-center gap-2 h-auto p-3"
-                      >
-                        <ArrowDown className="w-4 h-4 text-red-600" />
-                        <span>Salida</span>
-                      </Button>
-                    </div>
-                    <p className="text-xs text-gray-500">
-                      {movementType === 'entrada' 
-                        ? 'Suma al inventario' 
-                        : 'Resta del inventario'
-                      }
-                    </p>
-                  </div>
-                )}
-
-                {/* Location and Notes */}
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Ubicación (Opcional)
-                    </label>
-                    <Input
-                      value={scanLocation}
-                      onChange={(e) => setScanLocation(e.target.value)}
-                      placeholder="Ej: Guayaquil, Quito..."
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Notas (Opcional)
-                    </label>
-                    <Textarea
-                      value={scanNotes}
-                      onChange={(e) => setScanNotes(e.target.value)}
-                      placeholder="Notas adicionales..."
-                      rows={2}
-                    />
-                  </div>
-                </div>
-
-                {/* Submit Button */}
-                <Button
-                  onClick={submitScan}
-                  disabled={isSubmitting || !scanBarcode.trim()}
-                  className="w-full bg-blue-600 hover:bg-blue-700"
-                  size="lg"
-                >
-                  {isSubmitting ? (
-                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <Send className="w-4 h-4 mr-2" />
-                  )}
-                  Registrar Escaneo
-                </Button>
+              <div className="mb-4">
+                <BarcodeScanner
+                  onScan={handleBarcodeScan}
+                  isActive={isBarcodeScannerActive}
+                  onToggle={() => setIsBarcodeScannerActive(!isBarcodeScannerActive)}
+                />
               </div>
             )}
+
+            {/* Session Actions */}
+            <div className="flex gap-2 justify-center pt-4 border-t">
+              {session.status === 'active' && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={async () => {
+                    try {
+                      const response = await fetch(`${API_BASE_URL}/scanning/sessions/${session.id}/pause`, {
+                        method: 'PATCH',
+                        headers: {
+                          'Content-Type': 'application/json'
+                        }
+                      })
+                      if (response.ok) {
+                        toast.success("Sesión pausada")
+                        setSession(prev => prev ? {...prev, status: 'paused'} : null)
+                      } else {
+                        toast.error("Error al pausar sesión")
+                      }
+                    } catch (error) {
+                      toast.error("Error al pausar sesión")
+                    }
+                  }}
+                >
+                  <Pause className="w-3 h-3 mr-1" />
+                  Pausar
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={async () => {
+                  try {
+                    const response = await fetch(`${API_BASE_URL}/scanning/sessions/${session.id}/complete`, {
+                      method: 'PATCH',
+                      headers: {
+                        'Content-Type': 'application/json'
+                      }
+                    })
+                    if (response.ok) {
+                      toast.success("Sesión completada")
+                      setSession(prev => prev ? {...prev, status: 'completed'} : null)
+                    } else {
+                      toast.error("Error al completar sesión")
+                    }
+                  } catch (error) {
+                    toast.error("Error al completar sesión")
+                  }
+                }}
+              >
+                <Square className="w-3 h-3 mr-1" />
+                Completar
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  // Mostrar QR en nueva ventana
+                  const qrUrl = `${window.location.origin}/mobile-scan/${token}`
+                  window.open(qrUrl, '_blank')
+                  toast.info("QR abierto en nueva ventana")
+                }}
+              >
+                <QrCode className="w-3 h-3 mr-1" />
+                QR
+              </Button>
+            </div>
           </CardContent>
         </Card>
-
-        {/* Escaneos Recientes Card */}
-        {recentScans.length > 0 && (
-          <Card className="bg-white">
-            <CardHeader>
-              <CardTitle className="text-lg">Escaneos Recientes</CardTitle>
-              <CardDescription>
-                Últimos {recentScans.length} escaneos registrados
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {recentScans.slice(0, 2).map((scan) => (
-                  <div key={scan.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="default" className="bg-blue-600">
-                          {scan.scan_type === 'guide' ? 'Guía' : scan.scan_type === 'product' ? 'Producto' : 'Paquete'}
-                        </Badge>
-                        <span className="font-mono text-sm font-semibold">{scan.barcode}</span>
-                      </div>
-                      {scan.location && (
-                        <div className="flex items-center gap-1 mt-1">
-                          <MapPin className="w-3 h-3 text-gray-500" />
-                          <span className="text-xs text-gray-600">{scan.location}</span>
-                        </div>
-                      )}
-                      <div className="text-xs text-gray-500 mt-1">
-                        {new Date(scan.scanned_at).toLocaleString()}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Check className="w-4 h-4 text-green-600" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Session Status */}
-        {session.status === 'paused' && (
-          <Alert>
-            <AlertDescription>
-              La sesión está pausada. No se pueden realizar escaneos en este momento.
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {(session.status === 'completed' || session.status === 'expired') && (
-          <Alert>
-            <AlertDescription>
-              Esta sesión de pistoleo ha finalizado. No se pueden realizar más escaneos.
-            </AlertDescription>
-          </Alert>
-        )}
       </div>
     </div>
   )

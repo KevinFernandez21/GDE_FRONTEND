@@ -10,6 +10,8 @@ import { useApp } from "@/contexts/app-context"
 export default function Sidebar() {
   const { user, logout } = useAuth()
   const { activeModule, setActiveModule } = useApp()
+  
+  console.log('[Sidebar] User data:', user)
 
   const menuItems = [
     { id: "dashboard", icon: Home, label: "Dashboard" },
@@ -65,15 +67,15 @@ export default function Sidebar() {
           <Avatar className="w-8 h-8">
             <AvatarImage src="/placeholder.svg" />
             <AvatarFallback>
-              {user?.full_name
-                ? user.full_name.split(" ")
+              {(user?.full_name || user?.username)
+                ? (user.full_name || user.username).split(" ")
                     .map((n) => n[0])
                     .join("")
                 : "U"}
             </AvatarFallback>
           </Avatar>
           <div className="flex-1">
-            <p className="text-sm font-medium">{user?.full_name}</p>
+            <p className="text-sm font-medium">{user?.full_name || user?.username}</p>
             <p className="text-xs text-slate-400 capitalize">{user?.role}</p>
           </div>
         </div>

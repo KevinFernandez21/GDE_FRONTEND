@@ -13,7 +13,8 @@ import {
   Eye,
   ArrowRight,
   ArrowLeft,
-  RefreshCw
+  RefreshCw,
+  X
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -47,20 +48,26 @@ interface ValidationResult {
   data_validation: {
     critical_errors: ValidationError[]
     warnings: ValidationError[]
-    info: ValidationError[]
     total_errors: number
-    total_warnings: number
   }
   duplicate_check: {
     has_duplicates: boolean
-    duplicate_skus: any[]
-    total_duplicates: number
+    duplicate_rows: number[]
+  }
+  duplicate_file_check?: {
+    is_duplicate: boolean
+    last_imported: string
+  }
+  duplicate_sku_check?: {
+    has_existing: boolean
+    existing_count: number
+    new_count: number
+    total_skus: number
   }
   preview_data: any[]
   statistics: {
-    total_rows: number
-    empty_cells: number
-    fill_rate: number
+    completeness: number
+    quality_score: number
   }
   recommendations: Recommendation[]
   schema: SchemaDefinition
@@ -71,31 +78,26 @@ interface ColumnMapping {
   status: "required" | "optional" | "unknown" | "missing"
   message: string
   can_remove: boolean
-  definition?: ColumnDefinition
-}
-
-interface ColumnDefinition {
-  type: string
-  validation: string
-  description: string
-  example: string
-  max_length?: number
-  default?: any
 }
 
 interface ValidationError {
-  type: string
-  column?: string
   message: string
   affected_rows?: number[]
   total_affected?: number
 }
 
 interface Recommendation {
-  severity: "critical" | "warning" | "info" | "success"
-  type: string
+  severity: "critical" | "warning" | "info"
   message: string
-  action: string
+}
+
+interface ColumnDefinition {
+  type: string
+  validation: string
+  max_length?: number
+  description: string
+  example: string
+  unique?: boolean
 }
 
 interface SchemaDefinition {
@@ -105,11 +107,13 @@ interface SchemaDefinition {
 }
 
 interface ImportWizardProps {
+  isOpen?: boolean
+  onClose?: () => void
   onImportComplete?: () => void
   onCancel?: () => void
 }
 
-export default function InventoryImportWizard({ onImportComplete, onCancel }: ImportWizardProps) {
+export default function InventoryImportWizard({ isOpen, onClose, onImportComplete, onCancel }: ImportWizardProps) {
   const [step, setStep] = useState<"upload" | "validate" | "review" | "import" | "complete">("upload")
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [isDragging, setIsDragging] = useState(false)
@@ -118,6 +122,13 @@ export default function InventoryImportWizard({ onImportComplete, onCancel }: Im
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null)
   const [importResult, setImportResult] = useState<any>(null)
   const [columnsToRemove, setColumnsToRemove] = useState<string[]>([])
+
+  // Handle validation
+  const handleValidate = () => {
+    if (selectedFile) {
+      validateFile(selectedFile)
+    }
+  }
 
   // Handle file selection
   const handleFileSelect = (file: File) => {
@@ -144,8 +155,9 @@ export default function InventoryImportWizard({ onImportComplete, onCancel }: Im
     e.preventDefault()
     setIsDragging(false)
     
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFileSelect(e.dataTransfer.files[0])
+    const files = Array.from(e.dataTransfer.files)
+    if (files.length > 0) {
+      handleFileSelect(files[0])
     }
   }, [])
 
@@ -189,19 +201,21 @@ export default function InventoryImportWizard({ onImportComplete, onCancel }: Im
           })
         } else {
           toast.warning("Errores detectados", {
-            description: "Revise los errores antes de continuar"
+            description: "Revisa los errores antes de continuar"
           })
         }
       } else {
-        toast.error("Error de validación", {
-          description: data.message || data.detail || "Error desconocido"
+        toast.error("Error al validar", {
+          description: data.message || "Error desconocido"
         })
+        setStep("upload")
       }
     } catch (error: any) {
       console.error("Validation error:", error)
       toast.error("Error al validar el archivo", {
         description: error.message || "Error de conexión"
       })
+      setStep("upload")
     } finally {
       setIsValidating(false)
     }
@@ -244,14 +258,14 @@ export default function InventoryImportWizard({ onImportComplete, onCancel }: Im
         }
       } else {
         toast.error("Error en la importación", {
-          description: response.data.message
+          description: data.message || data.detail || "Error desconocido"
         })
         setStep("review")
       }
     } catch (error: any) {
       console.error("Import error:", error)
       toast.error("Error al importar", {
-        description: error.response?.data?.detail || error.message
+        description: error.response?.data?.detail || error.message || "Error desconocido"
       })
       setStep("review")
     } finally {
@@ -308,455 +322,537 @@ export default function InventoryImportWizard({ onImportComplete, onCancel }: Im
 
   // Render status badge
   const getStatusBadge = (status: string) => {
-    const variants: Record<string, { variant: any, label: string }> = {
+    const variants: Record<string, { variant: "destructive" | "secondary" | "outline", label: string }> = {
       required: { variant: "destructive", label: "Requerida" },
       optional: { variant: "secondary", label: "Opcional" },
       unknown: { variant: "outline", label: "Desconocida" },
       missing: { variant: "destructive", label: "Faltante" }
     }
     
-    const config = variants[status] || { variant: "outline", label: status }
+    const config = variants[status] || { variant: "outline" as const, label: status }
     return <Badge variant={config.variant}>{config.label}</Badge>
   }
 
   return (
-    <div className="space-y-6">
-      {/* Progress indicator */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-2">
-          {["upload", "validate", "review", "import", "complete"].map((s, index) => (
-            <div key={s} className="flex items-center">
-              <div className={`flex h-8 w-8 items-center justify-center rounded-full border-2 ${
-                step === s ? "border-primary bg-primary text-primary-foreground" :
-                ["upload", "validate", "review", "import", "complete"].indexOf(step) > index ? "border-primary bg-primary/20" :
-                "border-muted"
-              }`}>
-                {index + 1}
+    <div className="flex flex-col h-full">
+      {/* Header with progress indicator */}
+      <div className="flex-shrink-0 p-6 border-b">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-2xl font-bold">Importar Inventario</h2>
+          <Button variant="ghost" size="sm" onClick={onCancel}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+        
+        {/* Progress indicator - responsive */}
+        <div className="flex items-center justify-center">
+          <div className="flex items-center space-x-1 sm:space-x-2 overflow-x-auto pb-2">
+            {["upload", "validate", "review", "import", "complete"].map((s, index) => (
+              <div key={s} className="flex items-center flex-shrink-0">
+                <div className={`flex h-6 w-6 sm:h-8 sm:w-8 items-center justify-center rounded-full border-2 text-xs sm:text-sm ${
+                  step === s ? "border-primary bg-primary text-primary-foreground" :
+                  ["upload", "validate", "review", "import", "complete"].indexOf(step) > index ? "border-primary bg-primary/20" :
+                  "border-muted"
+                }`}>
+                  {index + 1}
+                </div>
+                {index < 4 && (
+                  <div className={`h-0.5 w-6 sm:w-12 ${
+                    ["upload", "validate", "review", "import", "complete"].indexOf(step) > index ? "bg-primary" : "bg-muted"
+                  }`} />
+                )}
               </div>
-              {index < 4 && (
-                <div className={`h-0.5 w-12 ${
-                  ["upload", "validate", "review", "import", "complete"].indexOf(step) > index ? "bg-primary" : "bg-muted"
-                }`} />
-              )}
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Step: Upload */}
-      {step === "upload" && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Cargar Archivo de Inventario</CardTitle>
-            <CardDescription>
-              Sube un archivo CSV o XLSX con los productos a importar
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Drag and drop area */}
-            <div
-              onDrop={handleDrop}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              className={`relative flex flex-col items-center justify-center border-2 border-dashed rounded-lg p-12 transition-colors ${
-                isDragging ? "border-primary bg-primary/5" : "border-muted hover:border-primary/50"
-              }`}
-            >
-              <Upload className="h-12 w-12 text-muted-foreground mb-4" />
-              <p className="text-lg font-medium mb-2">
-                Arrastra tu archivo aquí
-              </p>
-              <p className="text-sm text-muted-foreground mb-4">
-                o haz clic para seleccionar
-              </p>
-              <input
-                type="file"
-                accept=".csv,.xlsx,.xls"
-                onChange={(e) => e.target.files && handleFileSelect(e.target.files[0])}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-              />
-              <Badge variant="secondary">CSV o XLSX</Badge>
-            </div>
-
-            {/* Download templates */}
-            <div className="space-y-2">
-              <p className="text-sm font-medium">¿No tienes una plantilla?</p>
-              <div className="flex gap-2">
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={() => handleDownloadTemplate('xlsx')}
-                >
-                  <Download className="mr-2 h-4 w-4" />
-                  Descargar Plantilla XLSX
-                </Button>
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={() => handleDownloadTemplate('csv')}
-                >
-                  <Download className="mr-2 h-4 w-4" />
-                  Descargar Plantilla CSV
-                </Button>
-              </div>
-            </div>
-
-            {/* Requirements */}
-            <Alert>
-              <Info className="h-4 w-4" />
-              <AlertTitle>Requisitos del archivo</AlertTitle>
-              <AlertDescription className="space-y-2">
-                <p>El archivo debe contener las siguientes columnas requeridas:</p>
-                <ul className="list-disc list-inside text-sm space-y-1">
-                  <li><strong>sku</strong>: Código único del producto</li>
-                  <li><strong>name</strong>: Nombre del producto</li>
-                </ul>
-                <p className="text-xs text-muted-foreground mt-2">
-                  Columnas opcionales: description, category, brand, unit, cost_price, sale_price, current_stock, min_stock, max_stock, location, barcode
-                </p>
-              </AlertDescription>
-            </Alert>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Step: Validating */}
-      {step === "validate" && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Validando Archivo</CardTitle>
-            <CardDescription>
-              Analizando estructura y datos...
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-center py-12">
-              <RefreshCw className="h-8 w-8 animate-spin text-primary" />
-            </div>
-            <p className="text-center text-sm text-muted-foreground">
-              Por favor espera mientras validamos tu archivo
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Step: Review */}
-      {step === "review" && validationResult && (
-        <div className="space-y-4">
-          {/* Summary Card */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>Resultado de Validación</span>
-                {validationResult.valid_for_import ? (
-                  <Badge className="bg-green-500">✓ Listo para Importar</Badge>
-                ) : (
-                  <Badge variant="destructive">❌ Corrija los Errores</Badge>
-                )}
-              </CardTitle>
-              <CardDescription>
-                Archivo: {selectedFile?.name} ({validationResult.file_info.rows} filas, {validationResult.file_info.columns} columnas)
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="text-center">
-                  <div className="text-2xl font-bold">{validationResult.file_info.rows}</div>
-                  <div className="text-sm text-muted-foreground">Filas Totales</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-green-600">
-                    {validationResult.column_validation.valid_columns}
-                  </div>
-                  <div className="text-sm text-muted-foreground">Columnas Válidas</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-destructive">
-                    {validationResult.data_validation.total_errors}
-                  </div>
-                  <div className="text-sm text-muted-foreground">Errores Críticos</div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Recommendations */}
-          {validationResult.recommendations.length > 0 && (
+      {/* Scrollable content area */}
+      <div className="flex-1 overflow-y-auto p-6 pb-20">
+        <div className="space-y-6">
+          {/* Step: Upload */}
+          {step === "upload" && (
             <Card>
               <CardHeader>
-                <CardTitle>Recomendaciones</CardTitle>
+                <CardTitle>Cargar Archivo de Inventario</CardTitle>
+                <CardDescription>
+                  Sube un archivo CSV o XLSX con los productos a importar
+                </CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {validationResult.recommendations.map((rec, index) => (
-                    <Alert key={index} variant={rec.severity === "critical" ? "destructive" : "default"}>
-                      <div className="flex items-start gap-3">
-                        {getSeverityIcon(rec.severity)}
-                        <div className="flex-1">
-                          <AlertDescription>{rec.message}</AlertDescription>
-                        </div>
-                      </div>
-                    </Alert>
-                  ))}
+              <CardContent className="space-y-6">
+                {/* Drag and drop area */}
+                <div
+                  onDrop={handleDrop}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  className={`relative flex flex-col items-center justify-center border-2 border-dashed rounded-lg p-6 sm:p-12 transition-colors ${
+                    isDragging ? "border-primary bg-primary/5" : "border-muted hover:border-primary/50"
+                  }`}
+                >
+                  <Upload className="h-8 w-8 sm:h-12 sm:w-12 text-muted-foreground mb-4" />
+                  <p className="text-base sm:text-lg font-medium mb-2 text-center">
+                    Arrastra tu archivo aquí
+                  </p>
+                  <p className="text-xs sm:text-sm text-muted-foreground mb-4 text-center">
+                    o haz clic para seleccionar
+                  </p>
+                  <input
+                    type="file"
+                    accept=".csv,.xlsx,.xls"
+                    onChange={(e) => e.target.files && handleFileSelect(e.target.files[0])}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  />
+                  <Badge variant="secondary" className="text-xs">CSV o XLSX</Badge>
                 </div>
+
+                {/* Download templates */}
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">¿No tienes una plantilla?</p>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => handleDownloadTemplate('xlsx')}
+                      className="flex-1 sm:flex-none"
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      <span className="hidden sm:inline">Descargar Plantilla XLSX</span>
+                      <span className="sm:hidden">XLSX</span>
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => handleDownloadTemplate('csv')}
+                      className="flex-1 sm:flex-none"
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      <span className="hidden sm:inline">Descargar Plantilla CSV</span>
+                      <span className="sm:hidden">CSV</span>
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Requirements */}
+                <Alert>
+                  <Info className="h-4 w-4" />
+                  <AlertTitle>Requisitos del archivo</AlertTitle>
+                  <AlertDescription className="space-y-2">
+                    <p>El archivo debe contener las siguientes columnas requeridas:</p>
+                    <ul className="list-disc list-inside text-sm space-y-1">
+                      <li><strong>sku</strong>: Código único del producto</li>
+                      <li><strong>name</strong>: Nombre del producto</li>
+                    </ul>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Columnas opcionales: description, category, brand, unit, cost_price, sale_price, current_stock, min_stock, max_stock, location, barcode
+                    </p>
+                  </AlertDescription>
+                </Alert>
               </CardContent>
             </Card>
           )}
 
-          {/* Tabs for detailed view */}
-          <Card>
-            <CardContent className="p-6">
-              <Tabs defaultValue="columns" className="w-full">
-                <TabsList className="grid w-full grid-cols-4">
-                  <TabsTrigger value="columns">
-                    Columnas ({validationResult.column_validation.file_columns.length})
-                  </TabsTrigger>
-                  <TabsTrigger value="errors">
-                    Errores ({validationResult.data_validation.total_errors})
-                  </TabsTrigger>
-                  <TabsTrigger value="preview">
-                    Vista Previa
-                  </TabsTrigger>
-                  <TabsTrigger value="stats">
-                    Estadísticas
-                  </TabsTrigger>
-                </TabsList>
+          {/* Step: Validating */}
+          {step === "validate" && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Validando Archivo</CardTitle>
+                <CardDescription>
+                  Analizando estructura y datos...
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-center py-12">
+                  <RefreshCw className="h-8 w-8 animate-spin text-primary" />
+                </div>
+                <p className="text-center text-sm text-muted-foreground">
+                  Por favor espera mientras validamos tu archivo
+                </p>
+              </CardContent>
+            </Card>
+          )}
 
-                {/* Columns Tab */}
-                <TabsContent value="columns" className="space-y-4">
-                  <div className="rounded-md border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-[40px]"></TableHead>
-                          <TableHead>Columna</TableHead>
-                          <TableHead>Estado</TableHead>
-                          <TableHead>Mensaje</TableHead>
-                          <TableHead className="text-right">Acciones</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {validationResult.column_validation.column_mapping.map((col, index) => (
-                          <TableRow key={index}>
-                            <TableCell>
-                              {col.status === "required" && <XCircle className="h-4 w-4 text-destructive" />}
-                              {col.status === "optional" && <CheckCircle2 className="h-4 w-4 text-green-500" />}
-                              {col.status === "unknown" && <AlertTriangle className="h-4 w-4 text-yellow-500" />}
-                              {col.status === "missing" && <XCircle className="h-4 w-4 text-destructive" />}
-                            </TableCell>
-                            <TableCell className="font-medium">{col.column_name}</TableCell>
-                            <TableCell>{getStatusBadge(col.status)}</TableCell>
-                            <TableCell className="text-sm">{col.message}</TableCell>
-                            <TableCell className="text-right">
-                              {col.can_remove && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => {
-                                    toast.info("Función no disponible", {
-                                      description: "La eliminación de columnas se implementará próximamente"
-                                    })
-                                  }}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </TabsContent>
-
-                {/* Errors Tab */}
-                <TabsContent value="errors" className="space-y-4">
-                  <ScrollArea className="h-[400px]">
-                    <div className="space-y-3">
-                      {validationResult.data_validation.critical_errors.map((error, index) => (
-                        <Alert key={`error-${index}`} variant="destructive">
-                          <XCircle className="h-4 w-4" />
-                          <AlertTitle className="font-medium">{error.message}</AlertTitle>
-                          <AlertDescription className="text-sm">
-                            {error.affected_rows && (
-                              <p>Filas afectadas: {error.affected_rows.join(", ")}</p>
-                            )}
-                            {error.total_affected && error.total_affected > 10 && (
-                              <p className="text-xs mt-1">...y {error.total_affected - 10} más</p>
-                            )}
-                          </AlertDescription>
-                        </Alert>
-                      ))}
-                      
-                      {validationResult.data_validation.warnings.map((warning, index) => (
-                        <Alert key={`warning-${index}`}>
-                          <AlertTriangle className="h-4 w-4" />
-                          <AlertTitle className="font-medium">{warning.message}</AlertTitle>
-                          <AlertDescription className="text-sm">
-                            {warning.affected_rows && (
-                              <p>Filas afectadas: {warning.affected_rows.join(", ")}</p>
-                            )}
-                          </AlertDescription>
-                        </Alert>
-                      ))}
-                      
-                      {validationResult.data_validation.critical_errors.length === 0 &&
-                       validationResult.data_validation.warnings.length === 0 && (
-                        <div className="text-center py-8 text-muted-foreground">
-                          <CheckCircle2 className="h-12 w-12 mx-auto mb-2 text-green-500" />
-                          <p>No se encontraron errores</p>
-                        </div>
-                      )}
+          {/* Step: Review */}
+          {step === "review" && validationResult && (
+            <div className="space-y-4">
+              {/* Summary Card */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between">
+                    <span>Resultado de Validación</span>
+                    {validationResult.valid_for_import ? (
+                      <Badge className="bg-green-500">✓ Listo para Importar</Badge>
+                    ) : (
+                      <Badge variant="destructive">❌ Corrija los Errores</Badge>
+                    )}
+                  </CardTitle>
+                  <CardDescription>
+                    Archivo: {selectedFile?.name} ({validationResult.file_info?.rows || 0} filas, {validationResult.file_info?.columns || 0} columnas)
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="text-center">
+                      <div className="text-2xl font-bold">{validationResult.file_info?.rows || 0}</div>
+                      <div className="text-sm text-muted-foreground">Filas Totales</div>
                     </div>
-                  </ScrollArea>
-                </TabsContent>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-green-600">
+                        {validationResult.column_validation?.valid_columns || 0}
+                      </div>
+                      <div className="text-sm text-muted-foreground">Columnas Válidas</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-destructive">
+                        {validationResult.data_validation?.total_errors || 0}
+                      </div>
+                      <div className="text-sm text-muted-foreground">Errores Críticos</div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
 
-                {/* Preview Tab */}
-                <TabsContent value="preview">
-                  <ScrollArea className="h-[400px]">
-                    <div className="rounded-md border">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            {validationResult.column_validation.file_columns.map((col) => (
-                              <TableHead key={col}>{col}</TableHead>
-                            ))}
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {validationResult.preview_data.map((row, index) => (
-                            <TableRow key={index}>
-                              {validationResult.column_validation.file_columns.map((col) => (
-                                <TableCell key={col} className="max-w-[200px] truncate">
-                                  {row[col] !== null && row[col] !== undefined ? String(row[col]) : "-"}
-                                </TableCell>
+              {/* Recommendations */}
+              {validationResult.recommendations?.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Recomendaciones</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {validationResult.recommendations?.map((rec, index) => (
+                        <Alert key={index} variant={rec.severity === "critical" ? "destructive" : "default"}>
+                          <div className="flex items-start gap-3">
+                            {getSeverityIcon(rec.severity)}
+                            <div className="flex-1">
+                              <AlertDescription>{rec.message}</AlertDescription>
+                            </div>
+                          </div>
+                        </Alert>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Tabs for detailed view */}
+              <Card>
+                <CardContent className="p-4 sm:p-6">
+                  <Tabs defaultValue="columns" className="w-full">
+                    <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 h-auto">
+                      <TabsTrigger value="columns" className="text-xs sm:text-sm py-2">
+                        <span className="hidden sm:inline">Columnas</span>
+                        <span className="sm:hidden">Col</span>
+                        <Badge variant="secondary" className="ml-1 text-xs">
+                          {validationResult.column_validation?.file_columns?.length || 0}
+                        </Badge>
+                      </TabsTrigger>
+                      <TabsTrigger value="errors" className="text-xs sm:text-sm py-2">
+                        <span className="hidden sm:inline">Errores</span>
+                        <span className="sm:hidden">Err</span>
+                        <Badge variant="destructive" className="ml-1 text-xs">
+                          {validationResult.data_validation?.total_errors || 0}
+                        </Badge>
+                      </TabsTrigger>
+                      <TabsTrigger value="preview" className="text-xs sm:text-sm py-2">
+                        <span className="hidden sm:inline">Vista Previa</span>
+                        <span className="sm:hidden">Prev</span>
+                      </TabsTrigger>
+                      <TabsTrigger value="stats" className="text-xs sm:text-sm py-2">
+                        <span className="hidden sm:inline">Estadísticas</span>
+                        <span className="sm:hidden">Est</span>
+                      </TabsTrigger>
+                    </TabsList>
+
+                    {/* Columns Tab */}
+                    <TabsContent value="columns" className="space-y-4">
+                      <div className="rounded-md border overflow-hidden">
+                        <div className="overflow-x-auto">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead className="w-[40px]"></TableHead>
+                                <TableHead className="min-w-[120px]">Columna</TableHead>
+                                <TableHead className="min-w-[100px]">Estado</TableHead>
+                                <TableHead className="min-w-[200px]">Mensaje</TableHead>
+                                <TableHead className="text-right w-[80px]">Acciones</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {validationResult.column_validation?.column_mapping?.map((col, index) => (
+                                <TableRow key={index}>
+                                  <TableCell>
+                                    {col.status === "required" && <XCircle className="h-4 w-4 text-destructive" />}
+                                    {col.status === "optional" && <CheckCircle2 className="h-4 w-4 text-green-500" />}
+                                    {col.status === "unknown" && <AlertTriangle className="h-4 w-4 text-yellow-500" />}
+                                    {col.status === "missing" && <XCircle className="h-4 w-4 text-destructive" />}
+                                  </TableCell>
+                                  <TableCell className="font-medium">{col.column_name}</TableCell>
+                                  <TableCell>{getStatusBadge(col.status)}</TableCell>
+                                  <TableCell className="text-sm">{col.message}</TableCell>
+                                  <TableCell className="text-right">
+                                    {col.can_remove && (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => {
+                                          toast.info("Función no disponible", {
+                                            description: "La eliminación de columnas se implementará próximamente"
+                                          })
+                                        }}
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </Button>
+                                    )}
+                                  </TableCell>
+                                </TableRow>
                               ))}
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </ScrollArea>
-                </TabsContent>
-
-                {/* Statistics Tab */}
-                <TabsContent value="stats" className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-sm">Completitud de Datos</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-2">
-                          <Progress value={validationResult.statistics.fill_rate * 100} />
-                          <p className="text-2xl font-bold">
-                            {(validationResult.statistics.fill_rate * 100).toFixed(1)}%
-                          </p>
+                            </TableBody>
+                          </Table>
                         </div>
-                      </CardContent>
-                    </Card>
-                    
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-sm">Celdas Vacías</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <p className="text-2xl font-bold">{validationResult.statistics.empty_cells}</p>
-                      </CardContent>
-                    </Card>
-                  </div>
-                </TabsContent>
-              </Tabs>
-            </CardContent>
-          </Card>
+                      </div>
+                    </TabsContent>
 
-          {/* Action Buttons */}
-          <div className="flex justify-between">
-            <Button variant="outline" onClick={handleReset}>
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Cambiar Archivo
-            </Button>
+                    {/* Errors Tab */}
+                    <TabsContent value="errors" className="space-y-4">
+                      <ScrollArea className="h-[300px] sm:h-[400px] border rounded-md">
+                        <div className="space-y-3 p-4">
+                          {validationResult.data_validation?.critical_errors?.map((error, index) => (
+                            <Alert key={`error-${index}`} variant="destructive">
+                              <XCircle className="h-4 w-4" />
+                              <AlertTitle className="font-medium">{error.message}</AlertTitle>
+                              <AlertDescription className="text-sm">
+                                {error.affected_rows && (
+                                  <p>Filas afectadas: {error.affected_rows.join(", ")}</p>
+                                )}
+                                {error.total_affected && error.total_affected > 10 && (
+                                  <p className="text-xs mt-1">...y {error.total_affected - 10} más</p>
+                                )}
+                              </AlertDescription>
+                            </Alert>
+                          ))}
+                          
+                          {validationResult.data_validation?.warnings?.map((warning, index) => (
+                            <Alert key={`warning-${index}`}>
+                              <AlertTriangle className="h-4 w-4" />
+                              <AlertTitle className="font-medium">{warning.message}</AlertTitle>
+                              <AlertDescription className="text-sm">
+                                {warning.affected_rows && (
+                                  <p>Filas afectadas: {warning.affected_rows.join(", ")}</p>
+                                )}
+                              </AlertDescription>
+                            </Alert>
+                          ))}
+                        </div>
+                      </ScrollArea>
+                    </TabsContent>
+
+                    {/* Preview Tab */}
+                    <TabsContent value="preview">
+                      <ScrollArea className="h-[300px] sm:h-[400px] border rounded-md">
+                        <div className="overflow-x-auto">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                {validationResult.column_validation?.file_columns?.map((col) => (
+                                  <TableHead key={col} className="min-w-[100px] text-xs sm:text-sm">{col}</TableHead>
+                                ))}
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {validationResult.preview_data?.map((row, index) => (
+                                <TableRow key={index}>
+                                  {validationResult.column_validation?.file_columns?.map((col) => (
+                                    <TableCell key={col} className="max-w-[150px] sm:max-w-[200px] truncate text-xs sm:text-sm">
+                                      {row[col] !== null && row[col] !== undefined ? String(row[col]) : "-"}
+                                    </TableCell>
+                                  ))}
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </ScrollArea>
+                    </TabsContent>
+
+                    {/* Statistics Tab */}
+                    <TabsContent value="stats" className="space-y-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <Card>
+                          <CardHeader>
+                            <CardTitle className="text-sm">Completitud de Datos</CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="space-y-2">
+                              <div className="flex justify-between text-sm">
+                                <span>Completitud</span>
+                                <span>{validationResult.statistics?.completeness || 0}%</span>
+                              </div>
+                              <Progress value={validationResult.statistics?.completeness || 0} />
+                            </div>
+                          </CardContent>
+                        </Card>
+                        <Card>
+                          <CardHeader>
+                            <CardTitle className="text-sm">Calidad de Datos</CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="space-y-2">
+                              <div className="flex justify-between text-sm">
+                                <span>Puntuación</span>
+                                <span>{validationResult.statistics?.quality_score || 0}/100</span>
+                              </div>
+                              <Progress value={validationResult.statistics?.quality_score || 0} />
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </div>
+                    </TabsContent>
+                  </Tabs>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* Step: Importing */}
+          {step === "import" && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Importando Productos</CardTitle>
+                <CardDescription>
+                  Procesando datos...
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-center py-12">
+                  <RefreshCw className="h-8 w-8 animate-spin text-primary" />
+                </div>
+                <p className="text-center text-sm text-muted-foreground">
+                  Esto puede tomar algunos momentos
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Step: Complete */}
+          {step === "complete" && importResult && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CheckCircle2 className="h-6 w-6 text-green-500" />
+                  Importación Completada
+                </CardTitle>
+                <CardDescription>
+                  Los productos han sido importados exitosamente
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="text-center p-4 border rounded-lg">
+                    <div className="text-3xl font-bold">{importResult.results?.total_rows || 0}</div>
+                    <div className="text-sm text-muted-foreground">Total Procesado</div>
+                  </div>
+                  <div className="text-center p-4 border rounded-lg bg-green-50">
+                    <div className="text-3xl font-bold text-green-600">{importResult.results?.inserts || 0}</div>
+                    <div className="text-sm text-muted-foreground">Nuevos</div>
+                  </div>
+                  <div className="text-center p-4 border rounded-lg bg-blue-50">
+                    <div className="text-3xl font-bold text-blue-600">{importResult.results?.updates || 0}</div>
+                    <div className="text-sm text-muted-foreground">Actualizados</div>
+                  </div>
+                </div>
+
+                {importResult.results?.failed_rows > 0 && (
+                  <Alert variant="destructive">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>Algunos productos fallaron</AlertTitle>
+                    <AlertDescription>
+                      {importResult.results.failed_rows} productos no pudieron ser procesados
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
+
+      {/* Fixed bottom navigation */}
+      <div className="flex-shrink-0 border-t bg-white p-4">
+        <div className="flex justify-between items-center">
+          <div className="flex gap-2">
+            {step === "review" && validationResult && (
+              <Button
+                variant="outline"
+                onClick={() => setStep("upload")}
+                className="flex items-center gap-2"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Volver a Cargar
+              </Button>
+            )}
+            {step === "complete" && (
+              <Button
+                variant="outline"
+                onClick={handleReset}
+                className="flex items-center gap-2"
+              >
+                <Upload className="h-4 w-4" />
+                Importar Más
+              </Button>
+            )}
+          </div>
+          
+          <div className="flex gap-2">
             <Button
-              onClick={handleImport}
-              disabled={!validationResult.valid_for_import}
+              variant="outline"
+              onClick={onCancel}
             >
-              Continuar con Importación
-              <ArrowRight className="ml-2 h-4 w-4" />
+              Cancelar
             </Button>
+            
+            {step === "upload" && selectedFile && (
+              <Button
+                onClick={handleValidate}
+                disabled={isValidating}
+                className="flex items-center gap-2"
+              >
+                {isValidating ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ArrowRight className="h-4 w-4" />
+                )}
+                {isValidating ? "Validando..." : "Validar Archivo"}
+              </Button>
+            )}
+            
+            {step === "review" && validationResult && validationResult.valid_for_import && (
+              <Button
+                onClick={handleImport}
+                disabled={isImporting}
+                className="flex items-center gap-2"
+              >
+                {isImporting ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ArrowRight className="h-4 w-4" />
+                )}
+                {isImporting ? "Importando..." : "Importar Productos"}
+              </Button>
+            )}
+            
+            {step === "complete" && (
+              <Button
+                onClick={onCancel}
+                className="flex items-center gap-2"
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                Finalizar
+              </Button>
+            )}
           </div>
         </div>
-      )}
-
-      {/* Step: Importing */}
-      {step === "import" && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Importando Productos</CardTitle>
-            <CardDescription>
-              Procesando datos...
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-center py-12">
-              <RefreshCw className="h-8 w-8 animate-spin text-primary" />
-            </div>
-            <p className="text-center text-sm text-muted-foreground">
-              Esto puede tomar algunos momentos
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Step: Complete */}
-      {step === "complete" && importResult && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CheckCircle2 className="h-6 w-6 text-green-500" />
-              Importación Completada
-            </CardTitle>
-            <CardDescription>
-              Los productos han sido importados exitosamente
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-3 gap-4">
-              <div className="text-center p-4 border rounded-lg">
-                <div className="text-3xl font-bold">{importResult.results?.total_rows || 0}</div>
-                <div className="text-sm text-muted-foreground">Total Procesado</div>
-              </div>
-              <div className="text-center p-4 border rounded-lg bg-green-50">
-                <div className="text-3xl font-bold text-green-600">{importResult.results?.inserts || 0}</div>
-                <div className="text-sm text-muted-foreground">Nuevos</div>
-              </div>
-              <div className="text-center p-4 border rounded-lg bg-blue-50">
-                <div className="text-3xl font-bold text-blue-600">{importResult.results?.updates || 0}</div>
-                <div className="text-sm text-muted-foreground">Actualizados</div>
-              </div>
-            </div>
-
-            {importResult.results?.failed_rows > 0 && (
-              <Alert variant="destructive">
-                <AlertTriangle className="h-4 w-4" />
-                <AlertTitle>Algunos productos fallaron</AlertTitle>
-                <AlertDescription>
-                  {importResult.results.failed_rows} productos no pudieron ser procesados
-                </AlertDescription>
-              </Alert>
-            )}
-
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={handleReset}>
-                Importar Más Productos
-              </Button>
-              <Button onClick={onCancel}>
-                Cerrar
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      </div>
     </div>
   )
 }
-

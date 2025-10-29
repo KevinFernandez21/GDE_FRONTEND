@@ -149,23 +149,46 @@ export default function BulkGuideImportModal({ isOpen, onClose }: BulkGuideImpor
         const formData = new FormData()
         formData.append("file", file)
         
-        const response = await fetch(`/api/v1/guide-master/import/validate`, {
+        console.log("🚀 [BulkGuideImportModal] Starting file validation...")
+        console.log("📁 [BulkGuideImportModal] File details:", {
+          name: file.name,
+          size: file.size,
+          type: file.type
+        })
+        
+        const response = await fetch(`/api/v1/delivery-guides/import/validate`, {
           method: "POST",
           body: formData,
           credentials: "include",
         })
 
+        console.log("📡 [BulkGuideImportModal] Response received:", {
+          status: response.status,
+          statusText: response.statusText,
+          ok: response.ok
+        })
+
         if (!response.ok) {
-          throw new Error("Error al validar el archivo")
+          const errorText = await response.text()
+          console.error("❌ [BulkGuideImportModal] Response not OK:", errorText)
+          throw new Error(`Error al validar el archivo: ${response.status} ${response.statusText}`)
         }
 
         const result = await response.json()
         
-        console.log("Backend response:", result)
+        console.log("📊 [BulkGuideImportModal] Backend response:", result)
+        console.log("🔍 [BulkGuideImportModal] Response analysis:", {
+          hasSuccess: 'success' in result,
+          successValue: result.success,
+          hasValidForImport: 'valid_for_import' in result,
+          validForImportValue: result.valid_for_import,
+          hasData: 'data' in result,
+          dataKeys: result.data ? Object.keys(result.data) : 'no data'
+        })
         
         // Check using the same pattern as inventory (result.success instead of result.status)
         if (!result.success) {
-          console.error("Validation failed:", result.message)
+          console.error("❌ [BulkGuideImportModal] Validation failed:", result.message)
           setFileError(result.message || "Error al validar el archivo")
           setIsProcessing(false)
           return
@@ -173,12 +196,12 @@ export default function BulkGuideImportModal({ isOpen, onClose }: BulkGuideImpor
 
         // Procesar respuesta exitosa
         const validationData = result.data
-        console.log("Validation data:", validationData)
+        console.log("✅ [BulkGuideImportModal] Validation data:", validationData)
         
         // Additional check: if data is not valid for import, show error
         if (!validationData?.valid_for_import) {
           const errorMsg = validationData?.error || "El archivo contiene errores de validación"
-          console.error("File not valid for import:", errorMsg)
+          console.error("❌ [BulkGuideImportModal] File not valid for import:", errorMsg)
           setFileError(errorMsg)
           setIsProcessing(false)
           return
@@ -187,6 +210,9 @@ export default function BulkGuideImportModal({ isOpen, onClose }: BulkGuideImpor
         const columns = validationData.preview_data && validationData.preview_data.length > 0 
           ? Object.keys(validationData.preview_data[0])
           : []
+
+        console.log("📋 [BulkGuideImportModal] Detected columns:", columns)
+        console.log("👀 [BulkGuideImportModal] Preview data length:", validationData.preview_data?.length)
 
         setDetectedColumns(columns)
         setPreviewData(validationData.preview_data || [])
@@ -206,15 +232,16 @@ export default function BulkGuideImportModal({ isOpen, onClose }: BulkGuideImpor
           }
         })
 
+        console.log("🗺️ [BulkGuideImportModal] Column mappings:", mappings)
         setColumnMappings(mappings)
         setIsProcessing(false)
-        console.log("✅ Validation successful! Changing tab to preview...")
-        console.log("Preview data length:", validationData.preview_data?.length)
-        console.log("Detected columns:", columns)
+        console.log("✅ [BulkGuideImportModal] Validation successful! Changing tab to preview...")
+        console.log("📊 [BulkGuideImportModal] Preview data length:", validationData.preview_data?.length)
+        console.log("📋 [BulkGuideImportModal] Detected columns:", columns)
         setActiveTab("preview")
-        console.log("✅ Tab should now be 'preview'")
+        console.log("✅ [BulkGuideImportModal] Tab should now be 'preview'")
       } catch (error) {
-        console.error("Error validating file:", error)
+        console.error("💥 [BulkGuideImportModal] Error validating file:", error)
         setFileError(error instanceof Error ? error.message : "Error al procesar el archivo")
         setIsProcessing(false)
       }
@@ -272,7 +299,7 @@ export default function BulkGuideImportModal({ isOpen, onClose }: BulkGuideImpor
       const formData = new FormData()
       formData.append("file", uploadedFile)
       
-      const response = await fetch(`/api/v1/guide-master/import/import`, {
+      const response = await fetch(`/api/v1/delivery-guides/import/import`, {
         method: "POST",
         body: formData,
         credentials: "include",

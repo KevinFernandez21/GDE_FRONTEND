@@ -222,10 +222,15 @@ export default function BulkFinancialImportModal({ isOpen, onClose, type }: Bulk
         }
         
         const apiType = typeMap[type]
-        const response = await fetch(`/api/v1/accounting/${apiType}/import/validate`, {
+        const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000/api/v1'
+        const token = localStorage.getItem('gde_token')
+        
+        const response = await fetch(`${API_BASE_URL}/accounting/${apiType}/import/validate`, {
           method: "POST",
+          headers: {
+            'Authorization': `Bearer ${token}`
+          },
           body: formData,
-          credentials: "include",
         })
 
         if (!response.ok) {
@@ -343,10 +348,15 @@ export default function BulkFinancialImportModal({ isOpen, onClose, type }: Bulk
       }
       
       const apiType = typeMap[type]
-      const response = await fetch(`/api/v1/accounting/${apiType}/import/import`, {
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000/api/v1'
+      const token = localStorage.getItem('gde_token')
+      
+      const response = await fetch(`${API_BASE_URL}/accounting/${apiType}/import/import`, {
         method: "POST",
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
         body: formData,
-        credentials: "include",
       })
 
       if (!response.ok) {

@@ -89,14 +89,14 @@ export default function Header({ onOpenTutorial, showTutorialButton = false }: H
                 <Avatar className="w-6 h-6 mr-2">
                   <AvatarImage src="/placeholder.svg" />
                   <AvatarFallback>
-                    {user?.full_name
-                      ? user.full_name.split(" ")
+                    {(user?.full_name || user?.username)
+                      ? (user.full_name || user.username).split(" ")
                           .map((n) => n[0])
                           .join("")
                       : "U"}
                   </AvatarFallback>
                 </Avatar>
-                {user?.full_name}
+                {user?.full_name || user?.username}
                 <ChevronDown className="w-4 h-4 ml-2" />
               </Button>
             </DropdownMenuTrigger>

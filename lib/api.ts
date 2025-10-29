@@ -40,11 +40,9 @@ class ApiClient {
   }
 
   setToken(token: string) {
-    console.log('[ApiClient] Setting token, length:', token?.length || 0);
     this.token = token;
     if (typeof window !== 'undefined') {
       localStorage.setItem('gde_token', token);
-      console.log('[ApiClient] Token saved to localStorage');
     }
   }
 
@@ -55,22 +53,15 @@ class ApiClient {
     }
   }
 
-  async request<T>(
+  private async request<T>(
     endpoint: string,
     options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
     const url = `${this.baseUrl}${endpoint}`;
-
-    // Reload token from localStorage in case it was updated
-    if (typeof window !== 'undefined') {
-      const storedToken = localStorage.getItem('gde_token');
-      if (storedToken) {
-        this.token = storedToken;
-      }
-    }
-
-    console.log(`[ApiClient] Request to ${endpoint}, has token:`, !!this.token);
-
+    
+    console.log(`[ApiClient] Request to ${endpoint}, URL: ${url}`);
+    console.log(`[ApiClient] Has token:`, !!this.token);
+    
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
       ...options.headers,
@@ -79,12 +70,9 @@ class ApiClient {
     if (this.token) {
       headers.Authorization = `Bearer ${this.token}`;
       console.log(`[ApiClient] Token added to headers`);
-    } else {
-      console.warn(`[ApiClient] No token available for request to ${endpoint}`);
     }
 
     try {
-      console.log(`[ApiClient] Fetching ${url}`);
       const response = await fetch(url, {
         ...options,
         headers,
@@ -92,18 +80,12 @@ class ApiClient {
 
       console.log(`[ApiClient] Response status: ${response.status}`);
       const data = await response.json();
+      console.log(`[ApiClient] Response data:`, data);
 
       if (!response.ok) {
-        // Handle 401 Unauthorized - clear token and redirect to login
-        if (response.status === 401) {
-          this.clearToken();
-          if (typeof window !== 'undefined' && window.location.pathname !== '/') {
-            window.location.href = '/';
-          }
-        }
-
         // Handle FastAPI error response
         const errorMessage = data.detail || data.message || 'An error occurred';
+        console.log(`[ApiClient] Error response:`, errorMessage);
         return {
           error: errorMessage,
         };
@@ -111,13 +93,19 @@ class ApiClient {
 
       // Handle backend success response format
       if (data.status === 'success') {
-        return {
+        return { 
           data: data.data || data,
-          message: data.message
+          message: data.message 
         };
       }
 
-      // If it's a direct data response (backward compatibility)
+      // If it's a direct data response (like /me endpoint)
+      // Check if it looks like user data (has id, username, role)
+      if (data.id && data.username && data.role) {
+        return { data };
+      }
+
+      // For other direct responses
       return { data };
     } catch (error) {
       return {
@@ -129,19 +117,19 @@ class ApiClient {
   // Auth endpoints
   async login(username: string, password: string) {
     return this.request<{
-      access_token: string;
+      access_token: string; 
       token_type: string;
       expires_in: number;
       user: any;
-    }>('/auth/login', {
+    }>('/auth/login-simple', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        username,
-        password,
-        remember_me: false
+      body: JSON.stringify({ 
+        username, 
+        password, 
+        remember_me: false 
       }),
     });
   }

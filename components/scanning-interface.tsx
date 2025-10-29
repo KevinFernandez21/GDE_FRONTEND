@@ -569,161 +569,59 @@ export default function ScanningInterface() {
               {activeSessions.map((session) => (
                 <Card
                   key={session.id}
-                  className={`transition-colors ${
+                  className={`cursor-pointer transition-colors ${
                     currentSession?.id === session.id ? 'ring-2 ring-primary' : 'hover:bg-accent'
                   }`}
+                  onClick={() => setCurrentSession(session)}
                 >
-                  <CardContent className="p-6">
-                    {/* Session Header */}
-                    <div className="text-center mb-6">
-                      <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Pistoleo Móvil</h2>
-                      <p className="text-gray-600 dark:text-gray-400">{session.session_name}</p>
-                      <p className="text-sm text-gray-500">IP: {deviceIP}</p>
-                      <div className="flex items-center justify-center gap-2 mt-2">
+                  <CardContent className="p-4">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-semibold">{session.session_name}</h4>
                         {getStatusBadge(session.status)}
-                        <span className="text-xs text-muted-foreground">{session.scans_count} escaneos</span>
                       </div>
-                    </div>
-
-                    {/* Last Scan Result */}
-                    {currentSession?.id === session.id && lastScanResult && (
-                      <Alert
-                        className={`mb-4 ${
-                          lastScanResult.type === "success"
-                            ? "bg-green-50 dark:bg-green-950/20 border-green-300 dark:border-green-800"
-                            : lastScanResult.type === "warning"
-                            ? "bg-yellow-50 dark:bg-yellow-950/20 border-yellow-300 dark:border-yellow-800"
-                            : "bg-red-50 dark:bg-red-950/20 border-red-300 dark:border-red-800"
-                        }`}
-                      >
-                        {lastScanResult.type === "success" ? (
-                          <CheckCircle2 className="h-5 w-5 text-green-600" />
-                        ) : lastScanResult.type === "warning" ? (
-                          <AlertTriangle className="h-5 w-5 text-yellow-600" />
-                        ) : (
-                          <XCircle className="h-5 w-5 text-red-600" />
-                        )}
-                        <AlertTitle className={
-                          lastScanResult.type === "success"
-                            ? "text-green-900 dark:text-green-100"
-                            : lastScanResult.type === "warning"
-                            ? "text-yellow-900 dark:text-yellow-100"
-                            : "text-red-900 dark:text-red-100"
-                        }>
-                          {lastScanResult.message}
-                        </AlertTitle>
-                        {lastScanResult.details && (
-                          <AlertDescription className={
-                            lastScanResult.type === "success"
-                              ? "text-green-800 dark:text-green-200"
-                              : lastScanResult.type === "warning"
-                              ? "text-yellow-800 dark:text-yellow-200"
-                              : "text-red-800 dark:text-red-200"
-                          }>
-                            {lastScanResult.details}
-                          </AlertDescription>
-                        )}
-                      </Alert>
-                    )}
-
-                    {/* Movement Type Selection */}
-                    <div className="text-center mb-6">
-                      <h3 className="text-lg font-semibold mb-4">Tipo de Movimiento</h3>
-                      <div className="flex gap-4 justify-center">
-                        <Button
-                          size="lg"
-                          className={`h-20 w-32 text-lg ${
-                            currentSession?.id === session.id && movementType === 'entrada' 
-                              ? 'bg-green-600 hover:bg-green-700 text-white shadow-lg' 
-                              : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                          }`}
-                          onClick={() => {
-                            setCurrentSession(session)
-                            setMovementType('entrada')
-                          }}
-                        >
-                          <div className="flex flex-col items-center gap-2">
-                            <span className="text-3xl">📥</span>
-                            <span className="font-bold">Entrada</span>
-                            <span className="text-xs">Suma al inventario</span>
-                          </div>
-                        </Button>
-                        
-                        <Button
-                          size="lg"
-                          className={`h-20 w-32 text-lg ${
-                            currentSession?.id === session.id && movementType === 'salida' 
-                              ? 'bg-red-600 hover:bg-red-700 text-white shadow-lg' 
-                              : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                          }`}
-                          onClick={() => {
-                            setCurrentSession(session)
-                            setMovementType('salida')
-                          }}
-                        >
-                          <div className="flex flex-col items-center gap-2">
-                            <span className="text-3xl">📤</span>
-                            <span className="font-bold">Salida</span>
-                            <span className="text-xs">Resta del inventario</span>
-                          </div>
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Camera Button */}
-                    <div className="text-center mb-4">
-                      <Button
-                        size="lg"
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-12 py-6 text-xl font-bold shadow-lg"
-                        onClick={() => {
-                          setCurrentSession(session)
-                          // Activar cámara directamente
-                          toast.info("Iniciando cámara para escaneo...")
-                          // TODO: Implementar activación real de cámara
-                        }}
-                        disabled={currentSession?.id !== session.id || !movementType}
-                      >
-                        <Scan className="w-8 h-8 mr-4" />
-                        Iniciar Cámara
-                      </Button>
-                      <p className="text-sm text-gray-500 mt-3">
-                        {currentSession?.id === session.id && movementType 
-                          ? `Modo: ${movementType === 'entrada' ? 'Entrada' : 'Salida'}` 
-                          : 'Selecciona un tipo de movimiento'}
+                      <p className="text-sm text-muted-foreground line-clamp-2">
+                        {session.description || "Sin descripción"}
                       </p>
-                    </div>
-
-                    {/* Session Actions */}
-                    <div className="flex gap-2 justify-center pt-4 border-t">
-                      {session.status === 'active' && (
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>{session.scans_count} escaneos</span>
+                        <span>Expira: {formatDateTime(session.expires_at)}</span>
+                      </div>
+                      <div className="flex gap-2 pt-2">
+                        {session.status === 'active' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              pauseSession(session.id)
+                            }}
+                          >
+                            <Pause className="w-3 h-3" />
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => pauseSession(session.id)}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            completeSession(session.id)
+                          }}
                         >
-                          <Pause className="w-3 h-3 mr-1" />
-                          Pausar
+                          <Square className="w-3 h-3" />
                         </Button>
-                      )}
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => completeSession(session.id)}
-                      >
-                        <Square className="w-3 h-3 mr-1" />
-                        Completar
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setCurrentSession(session)
-                          setShowQRDialog(true)
-                        }}
-                      >
-                        <QrCode className="w-3 h-3 mr-1" />
-                        QR
-                      </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setCurrentSession(session)
+                            setShowQRDialog(true)
+                          }}
+                        >
+                          <QrCode className="w-3 h-3" />
+                        </Button>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -733,7 +631,209 @@ export default function ScanningInterface() {
         </CardContent>
       </Card>
 
+      {/* Manual Scanning Section */}
+      {currentSession && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Scan className="w-5 h-5" />
+              Escaneo Manual - {currentSession.session_name}
+            </CardTitle>
+            <CardDescription>
+              Ingresa códigos de barras manualmente o usa el QR para escaneo móvil.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Last Scan Result */}
+            {lastScanResult && (
+              <Alert
+                className={
+                  lastScanResult.type === "success"
+                    ? "bg-green-50 dark:bg-green-950/20 border-green-300 dark:border-green-800"
+                    : lastScanResult.type === "warning"
+                    ? "bg-yellow-50 dark:bg-yellow-950/20 border-yellow-300 dark:border-yellow-800"
+                    : "bg-red-50 dark:bg-red-950/20 border-red-300 dark:border-red-800"
+                }
+              >
+                {lastScanResult.type === "success" ? (
+                  <CheckCircle2 className="h-5 w-5 text-green-600" />
+                ) : lastScanResult.type === "warning" ? (
+                  <AlertTriangle className="h-5 w-5 text-yellow-600" />
+                ) : (
+                  <XCircle className="h-5 w-5 text-red-600" />
+                )}
+                <AlertTitle className={
+                  lastScanResult.type === "success"
+                    ? "text-green-900 dark:text-green-100"
+                    : lastScanResult.type === "warning"
+                    ? "text-yellow-900 dark:text-yellow-100"
+                    : "text-red-900 dark:text-red-100"
+                }>
+                  {lastScanResult.message}
+                </AlertTitle>
+                {lastScanResult.details && (
+                  <AlertDescription className={
+                    lastScanResult.type === "success"
+                      ? "text-green-800 dark:text-green-200"
+                      : lastScanResult.type === "warning"
+                      ? "text-yellow-800 dark:text-yellow-200"
+                      : "text-red-800 dark:text-red-200"
+                  }>
+                    {lastScanResult.details}
+                  </AlertDescription>
+                )}
+              </Alert>
+            )}
 
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Número de Guía</label>
+                <Input
+                  ref={barcodeInputRef}
+                  placeholder="Ingresa el número de guía..."
+                  value={manualBarcode}
+                  onChange={(e) => setManualBarcode(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      scanBarcode()
+                    }
+                  }}
+                  className="font-mono"
+                  autoFocus
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Fecha</label>
+                <Input
+                  type="date"
+                  value={scanDate}
+                  onChange={(e) => setScanDate(e.target.value)}
+                  className="font-mono"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Tipo de Movimiento</label>
+                <Select value={movementType} onValueChange={(value: any) => setMovementType(value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="entrada">Entrada</SelectItem>
+                    <SelectItem value="salida">Salida</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button 
+                onClick={scanBarcode} 
+                disabled={!manualBarcode.trim() || !scanDate || !movementType || isLoading}
+                className="flex-1"
+              >
+                {isLoading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Scan className="w-4 h-4 mr-2" />}
+                Procesar Escaneo
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setManualBarcode('')
+                  setScanDate(new Date().toISOString().split('T')[0])
+                  setMovementType('entrada')
+                  setLastScanResult(null)
+                  barcodeInputRef.current?.focus()
+                }}
+              >
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Limpiar
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Scan History */}
+      {currentSession && scanHistory.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Historial de Escaneos</CardTitle>
+            <CardDescription>
+              Últimos escaneos de la sesión actual ({scanHistory.length} total)
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Fecha/Hora</TableHead>
+                  <TableHead>Código</TableHead>
+                  <TableHead>Tipo</TableHead>
+                  <TableHead>Ubicación</TableHead>
+                  <TableHead>Estado</TableHead>
+                  <TableHead>Verificación</TableHead>
+                  <TableHead>Notas</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {scanHistory.slice(0, 10).map((scan) => (
+                  <TableRow
+                    key={scan.id}
+                    className={scan.is_unknown ? 'bg-red-50 dark:bg-red-950/20 border-l-4 border-l-red-500' :
+                               scan.is_duplicate ? 'bg-yellow-50 dark:bg-yellow-950/20 border-l-4 border-l-yellow-500' :
+                               scan.found_in_master ? 'bg-green-50 dark:bg-green-950/20 border-l-4 border-l-green-500' : ''}
+                  >
+                    <TableCell className="font-mono text-xs">
+                      {formatDateTime(scan.scanned_at)}
+                    </TableCell>
+                    <TableCell className="font-mono">{scan.barcode}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">
+                        {scan.scan_type === 'guide' ? 'Guía' :
+                         scan.scan_type === 'product' ? 'Producto' : 'Paquete'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>{scan.location || '-'}</TableCell>
+                    <TableCell>
+                      <Badge variant={scan.processed ? "default" : "secondary"}>
+                        {scan.processed ? 'Procesado' : 'Pendiente'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {scan.scan_type === 'guide' ? (
+                        scan.is_unknown ? (
+                          <div className="flex items-center gap-1">
+                            <Badge variant="destructive" className="text-xs">
+                              ⚠️ Desconocida
+                            </Badge>
+                          </div>
+                        ) : scan.is_duplicate ? (
+                          <div className="flex items-center gap-1">
+                            <Badge variant="secondary" className="text-xs bg-yellow-500 text-white">
+                              🔄 Duplicada ({scan.scans_count}x)
+                            </Badge>
+                          </div>
+                        ) : scan.found_in_master ? (
+                          <div className="flex items-center gap-1">
+                            <Badge variant="default" className="text-xs bg-green-600">
+                              ✅ En Lista Maestra
+                            </Badge>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">-</span>
+                        )
+                      ) : (
+                        <span className="text-xs text-muted-foreground">N/A</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="max-w-[200px] truncate">
+                      {scan.notes || '-'}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       {/* QR Code Dialog */}
       <Dialog open={showQRDialog} onOpenChange={setShowQRDialog}>

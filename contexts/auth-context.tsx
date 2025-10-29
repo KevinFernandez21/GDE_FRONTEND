@@ -39,9 +39,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
           console.log('[AuthContext] Fetching current user')
           const response = await apiClient.getCurrentUser()
+          console.log('[AuthContext] getCurrentUser response:', response)
 
           if (response.data) {
             console.log('[AuthContext] User authenticated:', response.data.username)
+            console.log('[AuthContext] User data:', response.data)
             setUser(response.data)
           } else {
             // Invalid token, clear it
