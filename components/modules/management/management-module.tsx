@@ -12,6 +12,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Progress } from "@/components/ui/progress"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { toast } from "sonner"
 import { apiClient } from "@/lib/api"
 import BulkFinancialImportModal from "@/components/bulk-financial-import-modal"
@@ -43,6 +53,28 @@ export default function ManagementModule() {
       maximumFractionDigits: 0,
       ...options
     })
+  }
+
+  // Helper function to calculate totals safely
+  const calculateTotal = (items: any[], amountField: string = 'amount', fallbackField: string = 'monto') => {
+    if (!items || !Array.isArray(items)) return 0
+    return items.reduce((sum, item) => {
+      const amount = Number(item[amountField] || item[fallbackField] || 0)
+      return sum + (isNaN(amount) ? 0 : amount)
+    }, 0)
+  }
+
+  // Helper function to calculate monthly totals
+  const calculateMonthlyTotal = (items: any[], amountField: string = 'amount', fallbackField: string = 'monto', dateField: string = 'fecha') => {
+    if (!items || !Array.isArray(items)) return 0
+    const now = new Date()
+    return items.filter(item => {
+      const itemDate = new Date(item[dateField])
+      return itemDate.getMonth() === now.getMonth() && itemDate.getFullYear() === now.getFullYear()
+    }).reduce((sum, item) => {
+      const amount = Number(item[amountField] || item[fallbackField] || 0)
+      return sum + (isNaN(amount) ? 0 : amount)
+    }, 0)
   }
 
   const formatNumber = (value: any, options?: Intl.NumberFormatOptions) => {
@@ -90,7 +122,101 @@ export default function ManagementModule() {
     porcGastosAdmin: 0,
     porcUtilidadNeta: 0
   })
+
+  // Delete confirmation for costos
+  const [deleteCostTarget, setDeleteCostTarget] = useState<any | null>(null)
+  const [isDeletingCost, setIsDeletingCost] = useState(false)
+
+  // Delete confirmation for gastos
+  const [deleteExpenseTarget, setDeleteExpenseTarget] = useState<any | null>(null)
+  const [isDeletingExpense, setIsDeletingExpense] = useState(false)
+
+  // Delete confirmation for capital
+  const [deleteCapitalTarget, setDeleteCapitalTarget] = useState<any | null>(null)
+  const [isDeletingCapital, setIsDeletingCapital] = useState(false)
+
   const [loading, setLoading] = useState(true)
+
+  const handleConfirmDeleteCost = async () => {
+    if (!deleteCostTarget) return
+    try {
+      setIsDeletingCost(true)
+      console.log("Deleting cost with ID:", deleteCostTarget.id)
+      
+      const response = await apiClient.request(`/accounting/costs/${deleteCostTarget.id}`, {
+        method: "DELETE"
+      })
+      
+      console.log("Delete cost response:", response)
+      
+      if (response.data || response.message) {
+        toast.success("Costo eliminado exitosamente")
+        setDeleteCostTarget(null)
+        fetchManagementData()
+      } else {
+        toast.error(response.error || "Error al eliminar el costo")
+      }
+    } catch (error: any) {
+      console.error("Delete cost error:", error)
+      toast.error(`Error al eliminar el costo: ${error.message || error}`)
+    } finally {
+      setIsDeletingCost(false)
+    }
+  }
+
+  const handleConfirmDeleteExpense = async () => {
+    if (!deleteExpenseTarget) return
+    try {
+      setIsDeletingExpense(true)
+      console.log("Deleting expense with ID:", deleteExpenseTarget.id)
+      
+      const response = await apiClient.request(`/accounting/expenses/${deleteExpenseTarget.id}`, {
+        method: "DELETE"
+      })
+      
+      console.log("Delete response:", response)
+      
+      if (response.data || response.message) {
+        toast.success("Gasto eliminado exitosamente")
+        fetchManagementData()
+        setDeleteExpenseTarget(null) // Close dialog
+      } else {
+        toast.error(response.error || "Error al eliminar el gasto")
+      }
+    } catch (error: any) {
+      console.error("Delete expense error:", error)
+      toast.error(`Error al eliminar el gasto: ${error.message || error}`)
+    } finally {
+      setIsDeletingExpense(false)
+    }
+  }
+
+  const handleConfirmDeleteCapital = async () => {
+    if (!deleteCapitalTarget) return
+    try {
+      setIsDeletingCapital(true)
+      console.log("Deleting capital with ID:", deleteCapitalTarget.id)
+      
+      const response = await apiClient.request(`/accounting/capital/${deleteCapitalTarget.id}`, {
+        method: "DELETE"
+      })
+      
+      console.log("Delete capital response:", response)
+      
+      if (response.data || response.message) {
+        toast.success("Movimiento de capital eliminado exitosamente")
+        fetchManagementData()
+        setDeleteCapitalTarget(null) // Close dialog
+      } else {
+        toast.error(response.error || "Error al eliminar el movimiento de capital")
+      }
+    } catch (error: any) {
+      console.error("Delete capital error:", error)
+      toast.error(`Error al eliminar el movimiento de capital: ${error.message || error}`)
+    } finally {
+      setIsDeletingCapital(false)
+    }
+  }
 
   // Calculate total costs from current data
   const calculateTotalCosts = useCallback(() => {
@@ -210,8 +336,26 @@ export default function ManagementModule() {
         method: 'GET'
       })
 
+      console.log('Costs response:', response)
+
       if (response.data) {
-        return response.data.items || response.data || []
+        const costs = response.data.items || response.data || []
+        console.log('Costs data:', costs)
+        console.log('Costs count:', costs.length)
+        if (costs.length > 0) {
+          console.log('First cost item:', costs[0])
+          console.log('Cost amount field:', costs[0].amount || costs[0].monto)
+          console.log('All cost fields:', Object.keys(costs[0]))
+          
+          // Test calculation
+          const testTotal = costs.reduce((sum, costo) => {
+            const amount = Number(costo.amount || costo.monto || 0)
+            console.log(`Costo ${costo.id}: amount=${costo.amount}, monto=${costo.monto}, parsed=${amount}`)
+            return sum + (isNaN(amount) ? 0 : amount)
+          }, 0)
+          console.log('Test total calculation:', testTotal)
+        }
+        return costs
       }
     } catch (error) {
       console.error('Error fetching costs:', error)
@@ -225,8 +369,26 @@ export default function ManagementModule() {
         method: 'GET'
       })
 
+      console.log('Expenses response:', response)
+
       if (response.data) {
-        return response.data.items || response.data || []
+        const expenses = response.data.items || response.data || []
+        console.log('Expenses data:', expenses)
+        console.log('Expenses count:', expenses.length)
+        if (expenses.length > 0) {
+          console.log('First expense item:', expenses[0])
+          console.log('Expense amount field:', expenses[0].amount || expenses[0].monto)
+          console.log('All expense fields:', Object.keys(expenses[0]))
+          
+          // Test calculation
+          const testTotal = expenses.reduce((sum, gasto) => {
+            const amount = Number(gasto.amount || gasto.monto || 0)
+            console.log(`Gasto ${gasto.id}: amount=${gasto.amount}, monto=${gasto.monto}, parsed=${amount}`)
+            return sum + (isNaN(amount) ? 0 : amount)
+          }, 0)
+          console.log('Test total expenses calculation:', testTotal)
+        }
+        return expenses
       }
     } catch (error) {
       console.error('Error fetching expenses:', error)
@@ -273,6 +435,39 @@ export default function ManagementModule() {
         fetchCapital(),
         fetchKPIs()
       ])
+
+      console.log('Fetched data:', { costos, gastos, capital, kpis })
+      console.log('Costos details:', costos)
+      console.log('Gastos details:', gastos)
+      console.log('Capital details:', capital)
+      
+      // Debug capital calculation
+      if (capital && capital.length > 0) {
+        console.log('First capital record:', capital[0])
+        const totalCapital = capital.reduce((sum, cap) => {
+          const amount = cap.monto || cap.amount || 0
+          console.log('Capital amount:', amount, 'Type:', typeof amount)
+          return sum + Number(amount)
+        }, 0)
+        console.log('Total capital calculated:', totalCapital)
+      }
+
+      // Debug costos calculation
+      if (costos && costos.length > 0) {
+        console.log('First costo:', costos[0])
+        const totalCostos = costos.reduce((sum, costo) => {
+          const amount = costo.amount || costo.monto || 0
+          console.log('Costo amount:', amount, 'Type:', typeof amount)
+          return sum + Number(amount)
+        }, 0)
+        console.log('Total costos calculated:', totalCostos)
+        
+        // Test with helper functions
+        const helperTotal = calculateTotal(costos)
+        const helperMonthly = calculateMonthlyTotal(costos)
+        console.log('Helper total:', helperTotal)
+        console.log('Helper monthly:', helperMonthly)
+      }
 
       setManagementData({
         costos,
@@ -687,73 +882,52 @@ export default function ManagementModule() {
             </div>
           </div>
 
-          {/* Controles de Edicion - Costos */}
-          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between bg-blue-50 p-4 rounded-lg border border-blue-200">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  checked={(selectedRows.costos?.length || 0) === (managementData.costos?.length || 0) && (managementData.costos?.length || 0) > 0}
-                  onCheckedChange={() => handleSelectAll('costos')}
-                />
-                <span className="text-sm font-medium">
-                  {(selectedRows.costos?.length || 0) > 0 ? `${selectedRows.costos.length} seleccionadas` : "Seleccionar todo"}
-                </span>
-              </div>
-              {(selectedRows.costos?.length || 0) > 0 && (
-                <Button variant="destructive" size="sm" onClick={() => handleDeleteRows('costos')}>
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Eliminar Seleccionadas
-                </Button>
-              )}
-            </div>
-            <div className="flex gap-2">
-              <Button onClick={() => handleAddRow('costos')} size="sm">
-                <RowsIcon className="w-4 h-4 mr-2" />
-                Agregar Fila
-              </Button>
-              <Button 
-                onClick={handleClearCosts} 
-                size="sm" 
-                variant="outline"
-                className="text-red-600 border-red-300 hover:bg-red-50"
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Limpiar Tabla
-              </Button>
-              {hasChanges && (
-                <Button onClick={() => { setHasChanges(false); toast.success("Cambios guardados"); }} size="sm" variant="default">
-                  <Save className="w-4 h-4 mr-2" />
-                  Guardar Cambios
-                </Button>
-              )}
-            </div>
-          </div>
+           {/* Resumen de Costos */}
+           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+             <Card>
+               <CardContent className="p-4">
+                 <div className="flex items-center justify-between">
+                   <div>
+                     <p className="text-sm font-medium text-slate-600">Total Costos</p>
+                     <p className="text-2xl font-bold text-slate-900">
+                       {formatCurrency(calculateTotal(managementData.costos))}
+                     </p>
+                   </div>
+                   <DollarSign className="w-8 h-8 text-red-600" />
+                 </div>
+               </CardContent>
+             </Card>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <Card className="border-red-200 bg-red-50">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-red-800">Total Costos</p>
-                    <p className="text-2xl font-bold text-red-600">{formatCurrency(calculateTotalCosts())}</p>
-                  </div>
-                  <DollarSign className="w-8 h-8 text-red-600" />
-                </div>
-              </CardContent>
-            </Card>
+             <Card>
+               <CardContent className="p-4">
+                 <div className="flex items-center justify-between">
+                   <div>
+                     <p className="text-sm font-medium text-slate-600">Este Mes</p>
+                     <p className="text-2xl font-bold text-slate-900">
+                       {formatCurrency(calculateMonthlyTotal(managementData.costos))}
+                     </p>
+                   </div>
+                   <TrendingUp className="w-8 h-8 text-orange-600" />
+                 </div>
+               </CardContent>
+             </Card>
 
-            <Card className="border-blue-200 bg-blue-50">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-blue-800">Costo Promedio Ponderado</p>
-                    <p className="text-2xl font-bold text-blue-600">{formatCurrency(calculateWeightedAverageCost(), {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
-                  </div>
-                  <BarChart3 className="w-8 h-8 text-blue-600" />
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+             <Card>
+               <CardContent className="p-4">
+                 <div className="flex items-center justify-between">
+                   <div>
+                     <p className="text-sm font-medium text-slate-600">Promedio Diario</p>
+                     <p className="text-2xl font-bold text-slate-900">
+                       {formatCurrency(managementData.costos?.length > 0 
+                         ? (calculateTotal(managementData.costos) / 30) 
+                         : 0)}
+                     </p>
+                   </div>
+                   <BarChart3 className="w-8 h-8 text-blue-600" />
+                 </div>
+               </CardContent>
+             </Card>
+           </div>
 
           <Card>
             <CardHeader>
@@ -762,39 +936,48 @@ export default function ManagementModule() {
             </CardHeader>
             <CardContent>
               <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-12">Sel.</TableHead>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead>Categoría</TableHead>
-                    <TableHead>Subcategoría</TableHead>
-                    <TableHead>Descripción</TableHead>
-                    <TableHead>Monto</TableHead>
-                    <TableHead>Proveedor</TableHead>
-                    <TableHead>Documento</TableHead>
-                    <TableHead>Estado</TableHead>
-                  </TableRow>
-                </TableHeader>
+                   <TableHeader>
+                     <TableRow>
+                       <TableHead>Fecha</TableHead>
+                       <TableHead>Categoría</TableHead>
+                       <TableHead>Subcategoría</TableHead>
+                       <TableHead>Descripción</TableHead>
+                       <TableHead>Monto</TableHead>
+                       <TableHead>Proveedor</TableHead>
+                       <TableHead>Documento</TableHead>
+                       <TableHead>Estado</TableHead>
+                       <TableHead className="text-right">Acciones</TableHead>
+                     </TableRow>
+                   </TableHeader>
                 <TableBody>
                   {(managementData.costos || []).map((costo) => {
-                    const isSelected = selectedRows.costos?.includes(costo.id)
                     return (
-                      <TableRow key={costo.id} className={isSelected ? 'bg-blue-50' : ''}>
-                        <TableCell>
-                          <Checkbox
-                            checked={isSelected}
-                            onCheckedChange={() => handleSelectRow(costo.id, 'costos')}
-                          />
-                        </TableCell>
+                      <TableRow key={costo.id}>
                         <TableCell>{renderEditableCell(costo, 'fecha', 'costos')}</TableCell>
                         <TableCell>{renderEditableCell(costo, 'categoria', 'costos')}</TableCell>
                         <TableCell>{renderEditableCell(costo, 'subcategoria', 'costos')}</TableCell>
                         <TableCell>{renderEditableCell(costo, 'descripcion', 'costos')}</TableCell>
                         <TableCell>{renderEditableCell(costo, 'monto', 'costos')}</TableCell>
                         <TableCell>{renderEditableCell(costo, 'proveedor', 'costos')}</TableCell>
-                        <TableCell>{renderEditableCell(costo, 'documento', 'costos')}</TableCell>
-                        <TableCell>{renderEditableCell(costo, 'estado', 'costos')}</TableCell>
-                      </TableRow>
+                         <TableCell>{renderEditableCell(costo, 'documento', 'costos')}</TableCell>
+                         <TableCell>{renderEditableCell(costo, 'estado', 'costos')}</TableCell>
+                         <TableCell className="text-right">
+                           <div className="flex justify-end gap-2">
+                             <Button
+                               variant="outline"
+                               size="sm"
+                               onClick={() => {
+                                 console.log("Cost object to delete:", costo)
+                                 setDeleteCostTarget(costo)
+                               }}
+                               className="h-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+                               title="Eliminar costo"
+                             >
+                               <Trash2 className="w-4 h-4" />
+                             </Button>
+                           </div>
+                         </TableCell>
+                       </TableRow>
                     )
                   })}
                 </TableBody>
@@ -839,37 +1022,51 @@ export default function ManagementModule() {
             </div>
           </div>
 
-          {/* Controles de Edicion - Gastos */}
-          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between bg-blue-50 p-4 rounded-lg border border-blue-200">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  checked={(selectedRows.gastos?.length || 0) === (managementData.gastos?.length || 0) && (managementData.gastos?.length || 0) > 0}
-                  onCheckedChange={() => handleSelectAll('gastos')}
-                />
-                <span className="text-sm font-medium">
-                  {(selectedRows.gastos?.length || 0) > 0 ? `${selectedRows.gastos.length} seleccionadas` : "Seleccionar todo"}
-                </span>
-              </div>
-              {(selectedRows.gastos?.length || 0) > 0 && (
-                <Button variant="destructive" size="sm" onClick={() => handleDeleteRows('gastos')}>
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Eliminar Seleccionadas
-                </Button>
-              )}
-            </div>
-            <div className="flex gap-2">
-              <Button onClick={() => handleAddRow('gastos')} size="sm">
-                <RowsIcon className="w-4 h-4 mr-2" />
-                Agregar Fila
-              </Button>
-              {hasChanges && (
-                <Button onClick={() => { setHasChanges(false); toast.success("Cambios guardados"); }} size="sm" variant="default">
-                  <Save className="w-4 h-4 mr-2" />
-                  Guardar Cambios
-                </Button>
-              )}
-            </div>
+          {/* Resumen de Gastos */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-slate-600">Total Gastos</p>
+                    <p className="text-2xl font-bold text-slate-900">
+                      {formatCurrency(calculateTotal(managementData.gastos))}
+                    </p>
+                  </div>
+                  <DollarSign className="w-8 h-8 text-red-600" />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-slate-600">Este Mes</p>
+                    <p className="text-2xl font-bold text-slate-900">
+                      {formatCurrency(calculateMonthlyTotal(managementData.gastos))}
+                    </p>
+                  </div>
+                  <TrendingUp className="w-8 h-8 text-orange-600" />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-slate-600">Promedio Diario</p>
+                    <p className="text-2xl font-bold text-slate-900">
+                      {formatCurrency(managementData.gastos?.length > 0 
+                        ? (calculateTotal(managementData.gastos) / 30) 
+                        : 0)}
+                    </p>
+                  </div>
+                  <BarChart3 className="w-8 h-8 text-blue-600" />
+                </div>
+              </CardContent>
+            </Card>
           </div>
 
           <Card>
@@ -879,37 +1076,43 @@ export default function ManagementModule() {
             </CardHeader>
             <CardContent>
               <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-12">Sel.</TableHead>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead>Categoría</TableHead>
-                    <TableHead>Subcategoría</TableHead>
-                    <TableHead>Descripción</TableHead>
-                    <TableHead>Monto</TableHead>
-                    <TableHead>Proveedor</TableHead>
-                    <TableHead>Estado</TableHead>
-                  </TableRow>
-                </TableHeader>
+                   <TableHeader>
+                     <TableRow>
+                       <TableHead>Fecha</TableHead>
+                       <TableHead>Categoría</TableHead>
+                       <TableHead>Subcategoría</TableHead>
+                       <TableHead>Descripción</TableHead>
+                       <TableHead>Monto</TableHead>
+                       <TableHead>Proveedor</TableHead>
+                       <TableHead>Estado</TableHead>
+                       <TableHead className="text-right">Acciones</TableHead>
+                     </TableRow>
+                   </TableHeader>
                 <TableBody>
                   {(managementData.gastos || []).map((gasto) => {
-                    const isSelected = selectedRows.gastos?.includes(gasto.id)
                     return (
-                      <TableRow key={gasto.id} className={isSelected ? 'bg-blue-50' : ''}>
-                        <TableCell>
-                          <Checkbox
-                            checked={isSelected}
-                            onCheckedChange={() => handleSelectRow(gasto.id, 'gastos')}
-                          />
-                        </TableCell>
+                      <TableRow key={gasto.id}>
                         <TableCell>{renderEditableCell(gasto, 'fecha', 'gastos')}</TableCell>
                         <TableCell>{renderEditableCell(gasto, 'categoria', 'gastos')}</TableCell>
                         <TableCell>{renderEditableCell(gasto, 'subcategoria', 'gastos')}</TableCell>
                         <TableCell>{renderEditableCell(gasto, 'descripcion', 'gastos')}</TableCell>
                         <TableCell>{renderEditableCell(gasto, 'monto', 'gastos')}</TableCell>
-                        <TableCell>{renderEditableCell(gasto, 'proveedor', 'gastos')}</TableCell>
-                        <TableCell>{renderEditableCell(gasto, 'estado', 'gastos')}</TableCell>
-                      </TableRow>
+                         <TableCell>{renderEditableCell(gasto, 'proveedor', 'gastos')}</TableCell>
+                         <TableCell>{renderEditableCell(gasto, 'estado', 'gastos')}</TableCell>
+                         <TableCell className="text-right">
+                           <div className="flex justify-end gap-2">
+                             <Button
+                               variant="outline"
+                               size="sm"
+                               onClick={() => setDeleteExpenseTarget(gasto)}
+                               className="h-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+                               title="Eliminar gasto"
+                             >
+                               <Trash2 className="w-4 h-4" />
+                             </Button>
+                           </div>
+                         </TableCell>
+                       </TableRow>
                     )
                   })}
                 </TableBody>
@@ -939,84 +1142,24 @@ export default function ManagementModule() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Resumen de Capital */}
+          <div className="grid grid-cols-1 gap-4 mb-6">
             <Card>
-              <CardHeader>
-                <CardTitle>Resumen de Capital</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
-                  <span className="font-medium">Capital Total</span>
-                  <span className="text-2xl font-bold text-green-600">
-                    {formatCurrency(kpiFinancieros.totalCapital)}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
-                  <span className="font-medium">Aportes de Socios</span>
-                  <span className="text-xl font-bold text-blue-600">{formatCurrency(kpiFinancieros.aporteSocios)}</span>
-                </div>
-                <div className="flex justify-between items-center p-3 bg-orange-50 rounded-lg">
-                  <span className="font-medium">Préstamos Activos</span>
-                  <span className="text-xl font-bold text-orange-600">{formatCurrency(kpiFinancieros.prestamosActivos)}</span>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-slate-600">Capital Total</p>
+                    <p className="text-2xl font-bold text-slate-900">
+                      {formatCurrency(managementData.capital?.reduce((sum, cap) => {
+                        const amount = Number(cap.monto || cap.amount || 0)
+                        return sum + (isNaN(amount) ? 0 : amount)
+                      }, 0) || 0)}
+                    </p>
+                  </div>
+                  <DollarSign className="w-8 h-8 text-green-600" />
                 </div>
               </CardContent>
             </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Impacto en Balance General</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span>Activos Totales</span>
-                    <span className="font-bold">{formatCurrency(kpiFinancieros.activosTotales)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Pasivos Totales</span>
-                    <span className="font-bold">{formatCurrency(kpiFinancieros.pasivosTotales)}</span>
-                  </div>
-                  <div className="flex justify-between border-t pt-2">
-                    <span className="font-bold">Patrimonio</span>
-                    <span className="font-bold text-green-600">{formatCurrency(kpiFinancieros.patrimonio)}</span>
-                  </div>
-                </div>
-                <p className="text-sm text-muted-foreground mt-4">Ratio de Endeudamiento: {formatNumber(kpiFinancieros.ratioEndeudamiento, {minimumFractionDigits: 1, maximumFractionDigits: 1})}%</p>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Controles de Edicion - Capital */}
-          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between bg-blue-50 p-4 rounded-lg border border-blue-200">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  checked={(selectedRows.capital?.length || 0) === (managementData.capital?.length || 0) && (managementData.capital?.length || 0) > 0}
-                  onCheckedChange={() => handleSelectAll('capital')}
-                />
-                <span className="text-sm font-medium">
-                  {(selectedRows.capital?.length || 0) > 0 ? `${selectedRows.capital.length} seleccionadas` : "Seleccionar todo"}
-                </span>
-              </div>
-              {(selectedRows.capital?.length || 0) > 0 && (
-                <Button variant="destructive" size="sm" onClick={() => handleDeleteRows('capital')}>
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Eliminar Seleccionadas
-                </Button>
-              )}
-            </div>
-            <div className="flex gap-2">
-              <Button onClick={() => handleAddRow('capital')} size="sm">
-                <RowsIcon className="w-4 h-4 mr-2" />
-                Agregar Fila
-              </Button>
-              {hasChanges && (
-                <Button onClick={() => { setHasChanges(false); toast.success("Cambios guardados"); }} size="sm" variant="default">
-                  <Save className="w-4 h-4 mr-2" />
-                  Guardar Cambios
-                </Button>
-              )}
-            </div>
           </div>
 
           <Card>
@@ -1028,34 +1171,41 @@ export default function ManagementModule() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-12">Sel.</TableHead>
                     <TableHead>Fecha</TableHead>
                     <TableHead>Tipo</TableHead>
                     <TableHead>Descripción</TableHead>
                     <TableHead>Monto</TableHead>
-                    <TableHead>Origen</TableHead>
-                    <TableHead>Documento</TableHead>
-                    <TableHead>Estado</TableHead>
+                    <TableHead>Nombre/Origen</TableHead>
+                    <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {(managementData.capital || []).map((capital) => {
-                    const isSelected = selectedRows.capital?.includes(capital.id)
                     return (
-                      <TableRow key={capital.id} className={isSelected ? 'bg-blue-50' : ''}>
+                      <TableRow key={capital.id}>
+                        <TableCell>{capital.date || capital.fecha || '-'}</TableCell>
                         <TableCell>
-                          <Checkbox
-                            checked={isSelected}
-                            onCheckedChange={() => handleSelectRow(capital.id, 'capital')}
-                          />
+                          {capital.capital_type === 'aporte_socio' ? 'Aporte de Socio' :
+                           capital.capital_type === 'prestamo' ? 'Préstamo' :
+                           capital.capital_type === 'inversion' ? 'Inversión' :
+                           capital.capital_type || capital.tipo || '-'}
                         </TableCell>
-                        <TableCell>{renderEditableCell(capital, 'fecha', 'capital')}</TableCell>
-                        <TableCell>{renderEditableCell(capital, 'tipo', 'capital')}</TableCell>
-                        <TableCell>{renderEditableCell(capital, 'descripcion', 'capital')}</TableCell>
-                        <TableCell>{renderEditableCell(capital, 'monto', 'capital')}</TableCell>
-                        <TableCell>{renderEditableCell(capital, 'origen', 'capital')}</TableCell>
-                        <TableCell>{renderEditableCell(capital, 'documento', 'capital')}</TableCell>
-                        <TableCell>{renderEditableCell(capital, 'estado', 'capital')}</TableCell>
+                        <TableCell>{capital.description || capital.descripcion || '-'}</TableCell>
+                        <TableCell>{formatCurrency(capital.monto || capital.amount || 0)}</TableCell>
+                        <TableCell>{capital.name || capital.origen || '-'}</TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setDeleteCapitalTarget(capital)}
+                              className="h-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+                              title="Eliminar movimiento de capital"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
                       </TableRow>
                     )
                   })}
@@ -1166,6 +1316,76 @@ export default function ManagementModule() {
         onSave={handleSaveCapital}
         editingCapital={editingItem}
       />
+
+      {/* Delete confirmation dialog - Costos */}
+      <AlertDialog open={!!deleteCostTarget} onOpenChange={(open) => { if (!open) setDeleteCostTarget(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar costo?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {`Esta acción eliminará el costo${deleteCostTarget && (deleteCostTarget.descripcion || deleteCostTarget.description) ? ` "${deleteCostTarget.descripcion || deleteCostTarget.description}"` : ""} y no se puede deshacer.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel asChild>
+              <Button variant="outline">Cancelar</Button>
+            </AlertDialogCancel>
+            <AlertDialogAction asChild>
+              <Button variant="destructive" onClick={handleConfirmDeleteCost} disabled={isDeletingCost}>
+                {isDeletingCost ? "Eliminando..." : "Eliminar"}
+              </Button>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete confirmation dialog - Gastos */}
+      <AlertDialog open={!!deleteExpenseTarget} onOpenChange={(open) => { if (!open) setDeleteExpenseTarget(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar gasto?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {`Esta acción eliminará el gasto${deleteExpenseTarget && (deleteExpenseTarget.descripcion || deleteExpenseTarget.description) ? ` "${deleteExpenseTarget.descripcion || deleteExpenseTarget.description}"` : ""} y no se puede deshacer.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel asChild>
+              <Button variant="outline">Cancelar</Button>
+            </AlertDialogCancel>
+            <AlertDialogAction asChild>
+              <Button variant="destructive" onClick={handleConfirmDeleteExpense} disabled={isDeletingExpense}>
+                {isDeletingExpense ? "Eliminando..." : "Eliminar"}
+              </Button>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete confirmation dialog - Capital */}
+      <AlertDialog open={!!deleteCapitalTarget} onOpenChange={(open) => { if (!open) setDeleteCapitalTarget(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar movimiento de capital?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {`Esta acción eliminará el movimiento de capital${deleteCapitalTarget && (deleteCapitalTarget.descripcion || deleteCapitalTarget.description) ? ` "${deleteCapitalTarget.descripcion || deleteCapitalTarget.description}"` : ""} y no se puede deshacer.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel asChild>
+              <Button variant="outline">Cancelar</Button>
+            </AlertDialogCancel>
+            <AlertDialogAction asChild>
+              <Button
+                variant="destructive"
+                onClick={handleConfirmDeleteCapital}
+                disabled={isDeletingCapital}
+              >
+                {isDeletingCapital ? "Eliminando..." : "Eliminar"}
+              </Button>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
         </>
       )}
     </div>

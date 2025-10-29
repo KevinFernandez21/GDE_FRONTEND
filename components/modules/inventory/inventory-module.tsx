@@ -3,6 +3,16 @@
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { Search, Filter, Download, Plus, Eye, Edit, Trash2, Package, AlertTriangle, Upload, History, RotateCcw, Clock, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -125,6 +135,10 @@ export default function InventoryModule() {
     dimensions: ""
   })
 
+  // Delete confirmation state
+  const [deleteTarget, setDeleteTarget] = useState<Product | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+
   // Load products
   const loadProducts = useCallback(async () => {
     try {
@@ -189,7 +203,7 @@ export default function InventoryModule() {
 
   // Handle rollback import
   const handleRollbackImport = async (importId: string) => {
-    if (!confirm("Are you sure you want to rollback this import? This action cannot be undone.")) {
+    if (!confirm("¿Estás seguro de que deseas revertir esta importación? Esta acción no se puede deshacer.")) {
       return
     }
 
@@ -199,15 +213,15 @@ export default function InventoryModule() {
       })
 
       if (response.data) {
-        toast.success(response.message || "Import rolled back successfully")
+        toast.success(response.message || "Importación revertida exitosamente")
         loadProducts()
         loadImportHistory()
         loadAuditActivity()
       } else {
-        toast.error(response.error || "Rollback failed")
+        toast.error(response.error || "Error al revertir la importación")
       }
     } catch (error) {
-      toast.error("Error rolling back import")
+      toast.error("Error al revertir la importación")
       console.error("Rollback error:", error)
     }
   }
@@ -226,42 +240,43 @@ export default function InventoryModule() {
       )
 
       if (response.data || response.message) {
-        toast.success(isEditing ? "Product updated successfully" : "Product created successfully")
+        toast.success(isEditing ? "Producto actualizado exitosamente" : "Producto creado exitosamente")
         setShowProductDialog(false)
         setEditingProduct(null)
         resetProductForm()
         loadProducts()
         loadAuditActivity()
       } else {
-        toast.error(response.error || "Error saving product")
+        toast.error(response.error || "Error al guardar el producto")
       }
     } catch (error) {
-      toast.error("Error saving product")
+      toast.error("Error al guardar el producto")
       console.error("Save product error:", error)
     }
   }
 
-  // Handle delete product
-  const handleDeleteProduct = async (productId: string) => {
-    if (!confirm("Are you sure you want to delete this product?")) {
-      return
-    }
-
+  // Confirm delete action from custom dialog
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return
     try {
-      const response = await apiClient.request(`/inventory/products/${productId}`, {
+      setIsDeleting(true)
+      const response = await apiClient.request(`/inventory/products/${deleteTarget.id}`, {
         method: "DELETE"
       })
 
       if (response.data || response.message) {
-        toast.success("Product deleted successfully")
+        toast.success("Producto eliminado exitosamente")
         loadProducts()
         loadAuditActivity()
+        setDeleteTarget(null)
       } else {
-        toast.error(response.error || "Error deleting product")
+        toast.error(response.error || "Error al eliminar el producto")
       }
     } catch (error) {
-      toast.error("Error deleting product")
+      toast.error("Error al eliminar el producto")
       console.error("Delete product error:", error)
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -377,7 +392,7 @@ export default function InventoryModule() {
             <div className="flex items-center space-x-2">
               <Package className="w-8 h-8 text-blue-600" />
               <div>
-                <p className="text-sm font-medium text-slate-600">Total Products</p>
+                <p className="text-sm font-medium text-slate-600">Total Productos</p>
                 <p className="text-2xl font-bold text-slate-900">{stockMetrics.totalProducts}</p>
               </div>
             </div>
@@ -389,7 +404,7 @@ export default function InventoryModule() {
             <div className="flex items-center space-x-2">
               <Package className="w-8 h-8 text-green-600" />
               <div>
-                <p className="text-sm font-medium text-slate-600">Total Stock</p>
+                <p className="text-sm font-medium text-slate-600">Stock Total</p>
                 <p className="text-2xl font-bold text-slate-900">{stockMetrics.totalStock.toLocaleString()}</p>
               </div>
             </div>
@@ -401,7 +416,7 @@ export default function InventoryModule() {
             <div className="flex items-center space-x-2">
               <AlertTriangle className="w-8 h-8 text-yellow-600" />
               <div>
-                <p className="text-sm font-medium text-slate-600">Low Stock</p>
+                <p className="text-sm font-medium text-slate-600">Stock Bajo</p>
                 <p className="text-2xl font-bold text-slate-900">{stockMetrics.lowStock}</p>
               </div>
             </div>
@@ -413,7 +428,7 @@ export default function InventoryModule() {
             <div className="flex items-center space-x-2">
               <AlertTriangle className="w-8 h-8 text-red-600" />
               <div>
-                <p className="text-sm font-medium text-slate-600">Out of Stock</p>
+                <p className="text-sm font-medium text-slate-600">Sin Stock</p>
                 <p className="text-2xl font-bold text-slate-900">{stockMetrics.outOfStock}</p>
               </div>
             </div>
@@ -425,7 +440,7 @@ export default function InventoryModule() {
             <div className="flex items-center space-x-2">
               <Filter className="w-8 h-8 text-purple-600" />
               <div>
-                <p className="text-sm font-medium text-slate-600">Categories</p>
+                <p className="text-sm font-medium text-slate-600">Categorías</p>
                 <p className="text-2xl font-bold text-slate-900">{stockMetrics.categories}</p>
               </div>
             </div>
@@ -436,10 +451,10 @@ export default function InventoryModule() {
       {/* Main Content */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList>
-          <TabsTrigger value="products">Products</TabsTrigger>
-          <TabsTrigger value="import">Import Data</TabsTrigger>
-          <TabsTrigger value="history">Import History</TabsTrigger>
-          <TabsTrigger value="audit">Audit Log</TabsTrigger>
+          <TabsTrigger value="products">Productos</TabsTrigger>
+          <TabsTrigger value="import">Importar Datos</TabsTrigger>
+          <TabsTrigger value="history">Historial de Importaciones</TabsTrigger>
+          <TabsTrigger value="audit">Registro de Auditoría</TabsTrigger>
         </TabsList>
 
         {/* Products Tab */}
@@ -448,8 +463,8 @@ export default function InventoryModule() {
             <CardHeader>
               <div className="flex justify-between items-center">
                 <div>
-                  <CardTitle>Product Inventory</CardTitle>
-                  <CardDescription>Manage your product catalog and stock levels</CardDescription>
+                  <CardTitle>Inventario de Productos</CardTitle>
+                  <CardDescription>Gestiona tu catálogo de productos y niveles de stock</CardDescription>
                 </div>
                 <div className="flex space-x-2">
                   <Button
@@ -461,7 +476,7 @@ export default function InventoryModule() {
                     className="bg-blue-600 hover:bg-blue-700"
                   >
                     <Plus className="w-4 h-4 mr-2" />
-                    Add Product
+                    Agregar Producto
                   </Button>
                 </div>
               </div>
@@ -471,7 +486,7 @@ export default function InventoryModule() {
               <div className="flex space-x-4 mb-6">
                 <div className="flex-1">
                   <Input
-                    placeholder="Search products..."
+                    placeholder="Buscar productos..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full"
@@ -479,10 +494,10 @@ export default function InventoryModule() {
                 </div>
                 <Select value={categoryFilter} onValueChange={setCategoryFilter}>
                   <SelectTrigger className="w-48">
-                    <SelectValue placeholder="All Categories" />
+                    <SelectValue placeholder="Todas las Categorías" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Categories</SelectItem>
+                    <SelectItem value="all">Todas las Categorías</SelectItem>
                     {categories.map(category => (
                       <SelectItem key={category} value={category}>{category}</SelectItem>
                     ))}
@@ -490,13 +505,13 @@ export default function InventoryModule() {
                 </Select>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
                   <SelectTrigger className="w-32">
-                    <SelectValue placeholder="All Status" />
+                    <SelectValue placeholder="Todos los Estados" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="inactive">Inactive</SelectItem>
-                    <SelectItem value="discontinued">Discontinued</SelectItem>
+                    <SelectItem value="all">Todos los Estados</SelectItem>
+                    <SelectItem value="active">Activo</SelectItem>
+                    <SelectItem value="inactive">Inactivo</SelectItem>
+                    <SelectItem value="discontinued">Descontinuado</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -507,14 +522,14 @@ export default function InventoryModule() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="px-6 py-4">Code</TableHead>
-                        <TableHead className="px-6 py-4">Name</TableHead>
-                        <TableHead className="px-6 py-4">Category</TableHead>
-                        <TableHead className="px-6 py-4">Current Stock</TableHead>
-                        <TableHead className="px-6 py-4">Min Stock</TableHead>
-                        <TableHead className="px-6 py-4">Sale Price</TableHead>
-                        <TableHead className="px-6 py-4">Status</TableHead>
-                        <TableHead className="px-6 py-4">Actions</TableHead>
+                        <TableHead className="px-6 py-4">Código</TableHead>
+                        <TableHead className="px-6 py-4">Nombre</TableHead>
+                        <TableHead className="px-6 py-4">Categoría</TableHead>
+                        <TableHead className="px-6 py-4">Stock Actual</TableHead>
+                        <TableHead className="px-6 py-4">Stock Mínimo</TableHead>
+                        <TableHead className="px-6 py-4">Precio de Venta</TableHead>
+                        <TableHead className="px-6 py-4">Estado</TableHead>
+                        <TableHead className="px-6 py-4">Acciones</TableHead>
                       </TableRow>
                     </TableHeader>
                   <TableBody>
@@ -523,7 +538,7 @@ export default function InventoryModule() {
                         <TableCell colSpan={8} className="text-center py-12 px-6">
                           <div className="flex flex-col items-center space-y-2">
                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                            <p className="text-gray-500">Loading products...</p>
+                            <p className="text-gray-500">Cargando productos...</p>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -532,7 +547,7 @@ export default function InventoryModule() {
                         <TableCell colSpan={8} className="text-center py-12 px-6">
                           <div className="flex flex-col items-center space-y-2">
                             <Package className="w-8 h-8 text-gray-400" />
-                            <p className="text-gray-500">No products found</p>
+                            <p className="text-gray-500">No se encontraron productos</p>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -555,7 +570,9 @@ export default function InventoryModule() {
                           <TableCell className="px-6 py-4 font-medium">${formatPrice(product.sale_price)}</TableCell>
                           <TableCell className="px-6 py-4">
                             <Badge variant={product.status === "active" ? "default" : "secondary"}>
-                              {product.status}
+                              {product.status === "active" ? "Activo" : 
+                               product.status === "inactive" ? "Inactivo" :
+                               product.status === "discontinued" ? "Descontinuado" : product.status}
                             </Badge>
                           </TableCell>
                           <TableCell className="px-6 py-4">
@@ -565,19 +582,19 @@ export default function InventoryModule() {
                                 size="sm"
                                 onClick={() => startEditProduct(product)}
                                 className="h-8"
+                                title="Editar producto"
                               >
                                 <Edit className="w-4 h-4" />
                               </Button>
-                              {user?.role === "admin" && (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleDeleteProduct(product.id)}
-                                  className="h-8 text-red-600 hover:text-red-700"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
-                              )}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setDeleteTarget(product)}
+                                className="h-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                title="Eliminar producto"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
                             </div>
                           </TableCell>
                         </TableRow>
@@ -595,9 +612,9 @@ export default function InventoryModule() {
         <TabsContent value="import" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Import Inventory Data</CardTitle>
+              <CardTitle>Importar Datos de Inventario</CardTitle>
               <CardDescription>
-                Upload Excel or CSV files to bulk import/update product data
+                Sube archivos Excel o CSV para importar/actualizar datos de productos en masa
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -605,21 +622,21 @@ export default function InventoryModule() {
                 <div className="border-2 border-dashed border-slate-300 rounded-lg p-8 text-center">
                   <Upload className="w-12 h-12 text-slate-400 mx-auto mb-4" />
                   <div className="space-y-2">
-                    <p className="text-lg font-medium">Upload Inventory File</p>
+                    <p className="text-lg font-medium">Subir Archivo de Inventario</p>
                     <p className="text-sm text-slate-600">
-                      Supports Excel (.xlsx, .xls) and CSV files
+                      Soporta archivos Excel (.xlsx, .xls) y CSV
                     </p>
                     <Button onClick={() => setShowImportWizard(true)}>
-                      Select File
+                      Seleccionar Archivo
                     </Button>
                   </div>
                 </div>
 
                 <div className="bg-blue-50 p-4 rounded-lg">
-                  <h4 className="font-medium mb-2">Expected File Format:</h4>
+                  <h4 className="font-medium mb-2">Formato de Archivo Esperado:</h4>
                   <div className="text-sm space-y-1">
-                    <p><strong>Required columns:</strong> code, name</p>
-                    <p><strong>Optional columns:</strong> description, category, brand, model, unit_of_measure, purchase_price, sale_price, current_stock, min_stock, max_stock, location, barcode, weight, dimensions</p>
+                    <p><strong>Columnas requeridas:</strong> code, name</p>
+                    <p><strong>Columnas opcionales:</strong> description, category, brand, model, unit_of_measure, purchase_price, sale_price, current_stock, min_stock, max_stock, location, barcode, weight, dimensions</p>
                   </div>
                 </div>
               </div>
@@ -631,22 +648,22 @@ export default function InventoryModule() {
         <TabsContent value="history" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Import History</CardTitle>
-              <CardDescription>View past inventory imports and their results</CardDescription>
+              <CardTitle>Historial de Importaciones</CardTitle>
+              <CardDescription>Ver importaciones de inventario anteriores y sus resultados</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="px-6 py-4">File Name</TableHead>
-                      <TableHead className="px-6 py-4">Imported By</TableHead>
-                      <TableHead className="px-6 py-4">Total Rows</TableHead>
-                      <TableHead className="px-6 py-4">Successful</TableHead>
-                      <TableHead className="px-6 py-4">Failed</TableHead>
-                      <TableHead className="px-6 py-4">Status</TableHead>
-                      <TableHead className="px-6 py-4">Date</TableHead>
-                      <TableHead className="px-6 py-4">Actions</TableHead>
+                      <TableHead className="px-6 py-4">Nombre de Archivo</TableHead>
+                      <TableHead className="px-6 py-4">Importado Por</TableHead>
+                      <TableHead className="px-6 py-4">Total de Filas</TableHead>
+                      <TableHead className="px-6 py-4">Exitosas</TableHead>
+                      <TableHead className="px-6 py-4">Fallidas</TableHead>
+                      <TableHead className="px-6 py-4">Estado</TableHead>
+                      <TableHead className="px-6 py-4">Fecha</TableHead>
+                      <TableHead className="px-6 py-4">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                 <TableBody>
@@ -655,7 +672,7 @@ export default function InventoryModule() {
                       <TableCell colSpan={8} className="text-center py-12 px-6">
                         <div className="flex flex-col items-center space-y-2">
                           <History className="w-8 h-8 text-gray-400" />
-                          <p className="text-gray-500">No import history found</p>
+                          <p className="text-gray-500">No se encontró historial de importaciones</p>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -674,7 +691,9 @@ export default function InventoryModule() {
                             import_.status === "rolled_back" ? "secondary" :
                             "outline"
                           }>
-                            {import_.status}
+                            {import_.status === "completed" ? "Completado" :
+                             import_.status === "failed" ? "Fallido" :
+                             import_.status === "rolled_back" ? "Revertido" : import_.status}
                           </Badge>
                         </TableCell>
                         <TableCell className="px-6 py-4 text-gray-600">{new Date(import_.created_at).toLocaleDateString()}</TableCell>
@@ -687,7 +706,7 @@ export default function InventoryModule() {
                               className="text-red-600 hover:text-red-700 h-8"
                             >
                               <RotateCcw className="w-4 h-4 mr-1" />
-                              Rollback
+                              Revertir
                             </Button>
                           )}
                         </TableCell>
@@ -705,24 +724,24 @@ export default function InventoryModule() {
         <TabsContent value="audit" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Audit Activity</CardTitle>
-              <CardDescription>Track all inventory changes and who made them</CardDescription>
+              <CardTitle>Actividad de Auditoría</CardTitle>
+              <CardDescription>Rastrea todos los cambios de inventario y quién los realizó</CardDescription>
             </CardHeader>
             <CardContent>
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Action</TableHead>
-                    <TableHead>User</TableHead>
-                    <TableHead>Product</TableHead>
-                    <TableHead>Date</TableHead>
+                    <TableHead>Acción</TableHead>
+                    <TableHead>Usuario</TableHead>
+                    <TableHead>Producto</TableHead>
+                    <TableHead>Fecha</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {auditActivity.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={4} className="text-center py-8">
-                        No audit activity found
+                        No se encontró actividad de auditoría
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -784,14 +803,14 @@ export default function InventoryModule() {
       <Dialog open={showProductDialog} onOpenChange={setShowProductDialog}>
         <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingProduct ? "Edit Product" : "Add Product"}</DialogTitle>
+            <DialogTitle>{editingProduct ? "Editar Producto" : "Agregar Producto"}</DialogTitle>
             <DialogDescription>
-              {editingProduct ? "Update product information" : "Add a new product to inventory"}
+              {editingProduct ? "Actualizar información del producto" : "Agregar un nuevo producto al inventario"}
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="code">Product Code *</Label>
+              <Label htmlFor="code">Código de Producto *</Label>
               <Input
                 id="code"
                 value={productForm.code}
@@ -800,67 +819,67 @@ export default function InventoryModule() {
               />
             </div>
             <div>
-              <Label htmlFor="name">Product Name *</Label>
+              <Label htmlFor="name">Nombre del Producto *</Label>
               <Input
                 id="name"
                 value={productForm.name}
                 onChange={(e) => setProductForm(prev => ({ ...prev, name: e.target.value }))}
-                placeholder="Product name"
+                placeholder="Nombre del producto"
               />
             </div>
             <div className="col-span-2">
-              <Label htmlFor="description">Description</Label>
+              <Label htmlFor="description">Descripción</Label>
               <Textarea
                 id="description"
                 value={productForm.description}
                 onChange={(e) => setProductForm(prev => ({ ...prev, description: e.target.value }))}
-                placeholder="Product description"
+                placeholder="Descripción del producto"
               />
             </div>
             <div>
-              <Label htmlFor="category">Category</Label>
+              <Label htmlFor="category">Categoría</Label>
               <Input
                 id="category"
                 value={productForm.category}
                 onChange={(e) => setProductForm(prev => ({ ...prev, category: e.target.value }))}
-                placeholder="Electronics"
+                placeholder="Electrónica"
               />
             </div>
             <div>
-              <Label htmlFor="brand">Brand</Label>
+              <Label htmlFor="brand">Marca</Label>
               <Input
                 id="brand"
                 value={productForm.brand}
                 onChange={(e) => setProductForm(prev => ({ ...prev, brand: e.target.value }))}
-                placeholder="Brand name"
+                placeholder="Nombre de la marca"
               />
             </div>
             <div>
-              <Label htmlFor="model">Model</Label>
+              <Label htmlFor="model">Modelo</Label>
               <Input
                 id="model"
                 value={productForm.model}
                 onChange={(e) => setProductForm(prev => ({ ...prev, model: e.target.value }))}
-                placeholder="Model number"
+                placeholder="Número de modelo"
               />
             </div>
             <div>
-              <Label htmlFor="unit_of_measure">Unit of Measure</Label>
+              <Label htmlFor="unit_of_measure">Unidad de Medida</Label>
               <Select value={productForm.unit_of_measure} onValueChange={(value) => setProductForm(prev => ({ ...prev, unit_of_measure: value }))}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="unit">Unit</SelectItem>
-                  <SelectItem value="kg">Kilogram</SelectItem>
-                  <SelectItem value="lb">Pound</SelectItem>
-                  <SelectItem value="box">Box</SelectItem>
-                  <SelectItem value="pack">Pack</SelectItem>
+                  <SelectItem value="unit">Unidad</SelectItem>
+                  <SelectItem value="kg">Kilogramo</SelectItem>
+                  <SelectItem value="lb">Libra</SelectItem>
+                  <SelectItem value="box">Caja</SelectItem>
+                  <SelectItem value="pack">Paquete</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div>
-              <Label htmlFor="purchase_price">Purchase Price</Label>
+              <Label htmlFor="purchase_price">Precio de Compra</Label>
               <Input
                 id="purchase_price"
                 type="number"
@@ -870,7 +889,7 @@ export default function InventoryModule() {
               />
             </div>
             <div>
-              <Label htmlFor="sale_price">Sale Price</Label>
+              <Label htmlFor="sale_price">Precio de Venta</Label>
               <Input
                 id="sale_price"
                 type="number"
@@ -880,7 +899,7 @@ export default function InventoryModule() {
               />
             </div>
             <div>
-              <Label htmlFor="current_stock">Current Stock</Label>
+              <Label htmlFor="current_stock">Stock Actual</Label>
               <Input
                 id="current_stock"
                 type="number"
@@ -889,7 +908,7 @@ export default function InventoryModule() {
               />
             </div>
             <div>
-              <Label htmlFor="min_stock">Min Stock</Label>
+              <Label htmlFor="min_stock">Stock Mínimo</Label>
               <Input
                 id="min_stock"
                 type="number"
@@ -898,7 +917,7 @@ export default function InventoryModule() {
               />
             </div>
             <div>
-              <Label htmlFor="max_stock">Max Stock</Label>
+              <Label htmlFor="max_stock">Stock Máximo</Label>
               <Input
                 id="max_stock"
                 type="number"
@@ -907,16 +926,16 @@ export default function InventoryModule() {
               />
             </div>
             <div>
-              <Label htmlFor="location">Location</Label>
+              <Label htmlFor="location">Ubicación</Label>
               <Input
                 id="location"
                 value={productForm.location}
                 onChange={(e) => setProductForm(prev => ({ ...prev, location: e.target.value }))}
-                placeholder="Warehouse A-1"
+                placeholder="Almacén A-1"
               />
             </div>
             <div>
-              <Label htmlFor="barcode">Barcode</Label>
+              <Label htmlFor="barcode">Código de Barras</Label>
               <Input
                 id="barcode"
                 value={productForm.barcode}
@@ -925,7 +944,7 @@ export default function InventoryModule() {
               />
             </div>
             <div>
-              <Label htmlFor="weight">Weight (kg)</Label>
+              <Label htmlFor="weight">Peso (kg)</Label>
               <Input
                 id="weight"
                 type="number"
@@ -935,7 +954,7 @@ export default function InventoryModule() {
               />
             </div>
             <div>
-              <Label htmlFor="dimensions">Dimensions</Label>
+              <Label htmlFor="dimensions">Dimensiones</Label>
               <Input
                 id="dimensions"
                 value={productForm.dimensions}
@@ -946,14 +965,40 @@ export default function InventoryModule() {
           </div>
           <div className="flex justify-end space-x-2 mt-6">
             <Button variant="outline" onClick={() => setShowProductDialog(false)}>
-              Cancel
+              Cancelar
             </Button>
             <Button onClick={handleSaveProduct}>
-              {editingProduct ? "Update" : "Create"}
+              {editingProduct ? "Actualizar" : "Crear"}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar producto?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {`Esta acción eliminará el producto${deleteTarget ? ` "${deleteTarget.name}"` : ""} y no se puede deshacer.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel asChild>
+              <Button variant="outline">Cancelar</Button>
+            </AlertDialogCancel>
+            <AlertDialogAction asChild>
+              <Button 
+                variant="destructive" 
+                onClick={handleConfirmDelete} 
+                disabled={isDeleting}
+              >
+                {isDeleting ? "Eliminando..." : "Eliminar"}
+              </Button>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

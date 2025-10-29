@@ -276,11 +276,25 @@ export default function InventoryImportWizard({ isOpen, onClose, onImportComplet
   // Download template
   const handleDownloadTemplate = async (format: 'xlsx' | 'csv') => {
     try {
-      const response = await apiClient.get(`/api/v1/inventory/import/template/download?format=${format}`, {
-        responseType: 'blob'
-      })
+      // Use fetch directly to download the blob
+      const token = localStorage.getItem('gde_token')
+      const apiBaseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'
+      const response = await fetch(
+        `${apiBaseUrl}/api/v1/inventory/import/template/download?format=${format}`,
+        {
+          method: 'GET',
+          headers: {
+            ...(token && { Authorization: `Bearer ${token}` })
+          }
+        }
+      )
       
-      const url = window.URL.createObjectURL(new Blob([response.data]))
+      if (!response.ok) {
+        throw new Error('Error al descargar la plantilla')
+      }
+      
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
       link.setAttribute('download', `plantilla_importacion_productos.${format}`)
@@ -368,7 +382,7 @@ export default function InventoryImportWizard({ isOpen, onClose, onImportComplet
       </div>
 
       {/* Scrollable content area */}
-      <div className="flex-1 overflow-y-auto p-6 pb-20">
+      <div className="flex-1 overflow-y-auto p-6 pb-24 max-h-[calc(100vh-200px)]">
         <div className="space-y-6">
           {/* Step: Upload */}
           {step === "upload" && (
@@ -565,7 +579,7 @@ export default function InventoryImportWizard({ isOpen, onClose, onImportComplet
 
                     {/* Columns Tab */}
                     <TabsContent value="columns" className="space-y-4">
-                      <div className="rounded-md border overflow-hidden">
+                      <ScrollArea className="h-[400px] sm:h-[500px] border rounded-md">
                         <div className="overflow-x-auto">
                           <Table>
                             <TableHeader>
@@ -609,7 +623,7 @@ export default function InventoryImportWizard({ isOpen, onClose, onImportComplet
                             </TableBody>
                           </Table>
                         </div>
-                      </div>
+                      </ScrollArea>
                     </TabsContent>
 
                     {/* Errors Tab */}

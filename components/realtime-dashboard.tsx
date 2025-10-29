@@ -60,6 +60,7 @@ interface RealtimeMetrics {
     pendientes: number
     en_transito: number
     entregadas: number
+    devueltas: number
   }
   activity_metrics: {
     usuarios_activos_hoy: number
@@ -89,6 +90,7 @@ export default function RealtimeDashboard() {
 
   const fetchRealtimeMetrics = async () => {
     try {
+      setLoading(true)
       setError(null) // Clear previous errors
       const response = await apiClient.request('/dashboard/realtime-metrics', {
         method: 'GET'
@@ -102,6 +104,9 @@ export default function RealtimeDashboard() {
           const hasRequiredFields = requiredFields.every(field => response.data[field] !== undefined)
           
           if (hasRequiredFields) {
+            console.log('Realtime metrics response:', response.data)
+            console.log('Financial metrics:', response.data.financial_metrics)
+            console.log('Total capital:', response.data.financial_metrics?.total_capital)
             setMetrics(response.data)
             setLastUpdate(new Date())
             setError(null)
@@ -238,14 +243,6 @@ export default function RealtimeDashboard() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button
-            variant={autoRefresh ? "default" : "outline"}
-            size="sm"
-            onClick={() => setAutoRefresh(!autoRefresh)}
-          >
-            <Activity className={`w-4 h-4 mr-2 ${autoRefresh ? 'animate-pulse' : ''}`} />
-            {autoRefresh ? "Auto-refresh ON" : "Auto-refresh OFF"}
-          </Button>
           <Button variant="outline" size="sm" onClick={fetchRealtimeMetrics}>
             <RotateCcw className="w-4 h-4 mr-2" />
             Actualizar
@@ -341,7 +338,7 @@ export default function RealtimeDashboard() {
           <DollarSign className="w-5 h-5 text-purple-600" />
           Métricas Financieras
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Valor Inventario</CardTitle>
@@ -353,21 +350,6 @@ export default function RealtimeDashboard() {
               </div>
               <p className="text-xs text-muted-foreground mt-1">
                 Costo de compra
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Valor Venta Potencial</CardTitle>
-              <TrendingUp className="h-4 w-4 text-green-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-600">
-                {formatCurrency(metrics.stock_metrics.valor_venta)}
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Margen: {formatCurrency(metrics.stock_metrics.valor_venta - metrics.stock_metrics.valor_compra)}
               </p>
             </CardContent>
           </Card>
@@ -394,7 +376,7 @@ export default function RealtimeDashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-blue-600">
-                {formatCurrency(metrics.financial_metrics.total_capital)}
+                {formatCurrency(metrics?.financial_metrics?.total_capital || 0)}
               </div>
               <p className="text-xs text-muted-foreground mt-1">
                 Aportes y préstamos
@@ -410,21 +392,7 @@ export default function RealtimeDashboard() {
           <FileText className="w-5 h-5 text-indigo-600" />
           Seguimiento de Guías
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Guías Master</CardTitle>
-              <FileText className="h-4 w-4 text-indigo-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{formatNumber(metrics.guide_tracking.total_guias)}</div>
-              <Progress value={guideCompletionPercentage} className="mt-2" />
-              <p className="text-xs text-muted-foreground mt-1">
-                {guideCompletionPercentage.toFixed(1)}% completado
-              </p>
-            </CardContent>
-          </Card>
-
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Escaneadas</CardTitle>
@@ -461,19 +429,6 @@ export default function RealtimeDashboard() {
                 {formatNumber(metrics.guide_tracking.guias_desconocidas)}
               </div>
               <p className="text-xs text-muted-foreground mt-1">No en lista</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Duplicadas</CardTitle>
-              <RotateCcw className="h-4 w-4 text-yellow-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-yellow-600">
-                {formatNumber(metrics.guide_tracking.guias_duplicadas)}
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">Multi-scan</p>
             </CardContent>
           </Card>
         </div>
@@ -553,6 +508,10 @@ export default function RealtimeDashboard() {
                     <span className="text-muted-foreground text-green-600">Entregadas:</span>
                     <span className="font-semibold text-green-600">{metrics.delivery_guides.entregadas}</span>
                   </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground text-red-600">Devueltas:</span>
+                    <span className="font-semibold text-red-600">{metrics.delivery_guides.devueltas}</span>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -623,16 +582,6 @@ export default function RealtimeDashboard() {
             </div>
 
             <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Auto-refresh:</span>
-                <Badge variant={autoRefresh ? "default" : "secondary"}>
-                  {autoRefresh ? "Activo" : "Inactivo"}
-                </Badge>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Intervalo:</span>
-                <Badge variant="outline">{refreshInterval}s</Badge>
-              </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Total alertas:</span>
                 <Badge variant={metrics.alerts.length > 0 ? "destructive" : "secondary"}>
