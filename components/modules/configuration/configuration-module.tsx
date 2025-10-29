@@ -131,7 +131,7 @@ export default function ConfigurationModule() {
   const [statusFilter, setStatusFilter] = useState("all")
   
   const { user } = useAuth()
-  
+
   // Permission checks
   const isAdmin = user?.role === 'admin'
   const isOperador = user?.role === 'operador'
@@ -215,8 +215,8 @@ export default function ConfigurationModule() {
   const handleCreateUser = async () => {
     if (!newUser.full_name || !newUser.email || !newUser.username || !newUser.password || !newUser.role) {
       toast.error("Todos los campos son requeridos")
-      return
-    }
+        return
+      }
 
     setIsCreatingUser(true)
     try {
@@ -467,15 +467,15 @@ export default function ConfigurationModule() {
             <>
               {/* System Status Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Card>
+            <Card>
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm font-medium text-gray-600">Usuarios Activos</p>
                         <p className="text-2xl font-bold text-green-600">{systemStats.active_users}</p>
-                      </div>
+                </div>
                       <UserCheck className="w-8 h-8 text-green-600" />
-                    </div>
+                </div>
                   </CardContent>
                 </Card>
 
@@ -485,58 +485,58 @@ export default function ConfigurationModule() {
                       <div>
                         <p className="text-sm font-medium text-gray-600">Total Registros</p>
                         <p className="text-2xl font-bold text-blue-600">{systemStats.total_records.toLocaleString()}</p>
-                      </div>
+                </div>
                       <DatabaseIcon className="w-8 h-8 text-blue-600" />
-                    </div>
-                  </CardContent>
-                </Card>
+                </div>
+              </CardContent>
+            </Card>
 
-                <Card>
+            <Card>
                   <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm font-medium text-gray-600">Uso de Memoria</p>
                         <p className="text-2xl font-bold text-orange-600">{systemStats.memory_usage}%</p>
-                      </div>
+                  </div>
                       <MemoryStick className="w-8 h-8 text-orange-600" />
-                    </div>
+                </div>
                   </CardContent>
                 </Card>
 
                 <Card>
                   <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm font-medium text-gray-600">Tiempo Activo</p>
                         <p className="text-2xl font-bold text-purple-600">{systemStats.system_uptime}</p>
-                      </div>
+                  </div>
                       <Clock className="w-8 h-8 text-purple-600" />
-                    </div>
-                  </CardContent>
-                </Card>
+                </div>
+              </CardContent>
+            </Card>
               </div>
 
               {/* System Performance */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
                     <Activity className="w-5 h-5" />
                     Rendimiento del Sistema
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
                   <div>
                     <div className="flex justify-between text-sm mb-2">
                       <span>Uso de CPU</span>
                       <span>{systemStats.cpu_usage}%</span>
-                    </div>
+                </div>
                     <Progress value={systemStats.cpu_usage} className="h-2" />
-                  </div>
+                </div>
                   <div>
                     <div className="flex justify-between text-sm mb-2">
                       <span>Uso de Disco</span>
                       <span>{systemStats.disk_usage}%</span>
-                    </div>
+                </div>
                     <Progress value={systemStats.disk_usage} className="h-2" />
                   </div>
                   <div>
@@ -546,8 +546,8 @@ export default function ConfigurationModule() {
                     </div>
                     <Progress value={systemStats.memory_usage} className="h-2" />
                   </div>
-                </CardContent>
-              </Card>
+              </CardContent>
+            </Card>
             </>
           )}
 
@@ -598,37 +598,37 @@ export default function ConfigurationModule() {
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
-                  <div>
+            <div>
                     <CardTitle>Gestión de Usuarios</CardTitle>
                     <CardDescription>
                       Administra usuarios del sistema y sus permisos
                     </CardDescription>
-                  </div>
+            </div>
                   <Button onClick={() => setShowCreateUserModal(true)}>
-                    <Plus className="w-4 h-4 mr-2" />
-                    Nuevo Usuario
-                  </Button>
-                </div>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Nuevo Usuario
+                </Button>
+                    </div>
               </CardHeader>
               <CardContent>
                 {/* Filters */}
                 <div className="flex flex-col sm:flex-row gap-4 mb-6">
                   <div className="flex-1">
-                    <Input
+                      <Input
                       placeholder="Buscar usuarios..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       className="max-w-sm"
-                    />
-                  </div>
+                      />
+                    </div>
                   <Select value={roleFilter} onValueChange={setRoleFilter}>
                     <SelectTrigger className="w-40">
                       <SelectValue placeholder="Filtrar por rol" />
-                    </SelectTrigger>
-                    <SelectContent>
+                      </SelectTrigger>
+                      <SelectContent>
                       <SelectItem value="all">Todos los roles</SelectItem>
                       <SelectItem value="admin">Admin</SelectItem>
-                      <SelectItem value="contador">Contador</SelectItem>
+                        <SelectItem value="contador">Contador</SelectItem>
                       <SelectItem value="operador">Operador</SelectItem>
                     </SelectContent>
                   </Select>
@@ -640,9 +640,9 @@ export default function ConfigurationModule() {
                       <SelectItem value="all">Todos</SelectItem>
                       <SelectItem value="active">Activos</SelectItem>
                       <SelectItem value="inactive">Inactivos</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                      </SelectContent>
+                    </Select>
+                  </div>
 
                 {/* Users Table */}
                 <div className="border rounded-lg">
@@ -663,7 +663,7 @@ export default function ConfigurationModule() {
                             <div>
                               <p className="font-medium">{user.full_name}</p>
                               <p className="text-sm text-gray-500">{user.email}</p>
-                            </div>
+                    </div>
                           </TableCell>
                           <TableCell>
                             <Badge variant={
@@ -683,17 +683,17 @@ export default function ConfigurationModule() {
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-2">
-                              <Button
+                    <Button
                                 size="sm"
                                 variant="ghost"
-                                onClick={() => {
+                      onClick={() => {
                                   setSelectedUser(user)
                                   setShowEditUserModal(true)
                                 }}
                               >
                                 <Edit className="w-4 h-4" />
-                              </Button>
-                              <Button
+                    </Button>
+                    <Button
                                 size="sm"
                                 variant="ghost"
                                 onClick={() => handleToggleUserStatus(user.id, user.is_active)}
@@ -707,8 +707,8 @@ export default function ConfigurationModule() {
                                 className="text-red-600 hover:text-red-700"
                               >
                                 <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </div>
+                    </Button>
+                  </div>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -725,14 +725,14 @@ export default function ConfigurationModule() {
           <TabsContent value="database" className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Database Operations */}
-              <Card>
-                <CardHeader>
+            <Card>
+              <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Database className="w-5 h-5" />
                     Operaciones de Base de Datos
                   </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
+              </CardHeader>
+              <CardContent className="space-y-4">
                   <div className="space-y-2">
                     <h4 className="font-medium">Respaldo</h4>
                     <p className="text-sm text-gray-600">
@@ -742,8 +742,8 @@ export default function ConfigurationModule() {
                       <Download className="w-4 h-4 mr-2" />
                       Crear Respaldo
                     </Button>
-                  </div>
-                  
+                    </div>
+
                   <Separator />
                   
                   <div className="space-y-2">
@@ -758,41 +758,41 @@ export default function ConfigurationModule() {
                     >
                       <Upload className="w-4 h-4 mr-2" />
                       Restaurar Base de Datos
-                    </Button>
-                  </div>
+                        </Button>
+                      </div>
                 </CardContent>
               </Card>
 
               {/* Database Statistics */}
-              <Card>
-                <CardHeader>
+            <Card>
+              <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <BarChart3 className="w-5 h-5" />
                     Estadísticas de Base de Datos
                   </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
+              </CardHeader>
+              <CardContent className="space-y-4">
                   <div className="flex justify-between items-center">
                     <span className="text-sm font-medium">Tamaño de BD</span>
                     <span className="text-sm text-gray-600">
                       {(systemStats?.database_size / (1024 * 1024)).toFixed(2)} MB
                     </span>
-                  </div>
+                      </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm font-medium">Total de Registros</span>
                     <span className="text-sm text-gray-600">
                       {systemStats?.total_records.toLocaleString()}
                     </span>
-                  </div>
+                    </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm font-medium">Usuarios Registrados</span>
                     <span className="text-sm text-gray-600">
                       {systemStats?.total_users}
                     </span>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+                    </div>
+              </CardContent>
+            </Card>
+          </div>
           </TabsContent>
         )}
 
@@ -810,33 +810,33 @@ export default function ConfigurationModule() {
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-4">
-                <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
                     <Label htmlFor="email-notifications">Notificaciones por Email</Label>
                     <p className="text-sm text-gray-600">
                       Recibe notificaciones importantes por correo electrónico
                     </p>
-                  </div>
+                        </div>
                   <Switch
                     id="email-notifications"
                     checked={notificationSettings.email_notifications}
                     onCheckedChange={(checked) => handleNotificationSettingChange('email_notifications', checked)}
                   />
-                </div>
+                        </div>
 
-                <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
                     <Label htmlFor="push-notifications">Notificaciones Push</Label>
                     <p className="text-sm text-gray-600">
                       Recibe notificaciones en tiempo real en el navegador
                     </p>
-                  </div>
+                        </div>
                   <Switch
                     id="push-notifications"
                     checked={notificationSettings.push_notifications}
                     onCheckedChange={(checked) => handleNotificationSettingChange('push_notifications', checked)}
                   />
-                </div>
+                          </div>
 
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
@@ -893,9 +893,9 @@ export default function ConfigurationModule() {
                     onCheckedChange={(checked) => handleNotificationSettingChange('data_import_alerts', checked)}
                   />
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+                </div>
+              </CardContent>
+            </Card>
         </TabsContent>
       </Tabs>
 
@@ -908,8 +908,8 @@ export default function ConfigurationModule() {
               Agrega un nuevo usuario al sistema con los permisos correspondientes
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div>
+                <div className="space-y-4">
+                      <div>
               <Label htmlFor="full_name">Nombre Completo</Label>
               <Input
                 id="full_name"
@@ -917,7 +917,7 @@ export default function ConfigurationModule() {
                 onChange={(e) => setNewUser(prev => ({ ...prev, full_name: e.target.value }))}
                 placeholder="Ej: Juan Pérez"
               />
-            </div>
+                      </div>
             <div>
               <Label htmlFor="email">Email</Label>
               <Input
@@ -927,8 +927,8 @@ export default function ConfigurationModule() {
                 onChange={(e) => setNewUser(prev => ({ ...prev, email: e.target.value }))}
                 placeholder="juan@empresa.com"
               />
-            </div>
-            <div>
+                    </div>
+                      <div>
               <Label htmlFor="username">Nombre de Usuario</Label>
               <Input
                 id="username"
@@ -936,7 +936,7 @@ export default function ConfigurationModule() {
                 onChange={(e) => setNewUser(prev => ({ ...prev, username: e.target.value }))}
                 placeholder="jperez"
               />
-            </div>
+                      </div>
             <div>
               <Label htmlFor="password">Contraseña</Label>
               <Input
@@ -946,8 +946,8 @@ export default function ConfigurationModule() {
                 onChange={(e) => setNewUser(prev => ({ ...prev, password: e.target.value }))}
                 placeholder="••••••••"
               />
-            </div>
-            <div>
+                    </div>
+                      <div>
               <Label htmlFor="role">Rol</Label>
               <Select value={newUser.role} onValueChange={(value) => setNewUser(prev => ({ ...prev, role: value }))}>
                 <SelectTrigger>
@@ -959,7 +959,7 @@ export default function ConfigurationModule() {
                   <SelectItem value="operador">Operador</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
+                      </div>
             <div>
               <Label htmlFor="notes">Notas (Opcional)</Label>
               <Textarea
@@ -969,8 +969,8 @@ export default function ConfigurationModule() {
                 placeholder="Información adicional sobre el usuario"
                 rows={3}
               />
-            </div>
-          </div>
+                    </div>
+                  </div>
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setShowCreateUserModal(false)}>
               Cancelar
@@ -988,7 +988,7 @@ export default function ConfigurationModule() {
                 </>
               )}
             </Button>
-          </div>
+                </div>
         </DialogContent>
       </Dialog>
 
@@ -1002,16 +1002,16 @@ export default function ConfigurationModule() {
             </DialogDescription>
           </DialogHeader>
           {selectedUser && (
-            <div className="space-y-4">
-              <div>
+                <div className="space-y-4">
+                      <div>
                 <Label htmlFor="edit_full_name">Nombre Completo</Label>
                 <Input
                   id="edit_full_name"
                   value={selectedUser.full_name}
                   onChange={(e) => setSelectedUser(prev => prev ? { ...prev, full_name: e.target.value } : null)}
                 />
-              </div>
-              <div>
+                      </div>
+                      <div>
                 <Label htmlFor="edit_email">Email</Label>
                 <Input
                   id="edit_email"
@@ -1019,23 +1019,23 @@ export default function ConfigurationModule() {
                   value={selectedUser.email}
                   onChange={(e) => setSelectedUser(prev => prev ? { ...prev, email: e.target.value } : null)}
                 />
-              </div>
-              <div>
+                      </div>
+                      <div>
                 <Label htmlFor="edit_role">Rol</Label>
                 <Select 
                   value={selectedUser.role} 
                   onValueChange={(value) => setSelectedUser(prev => prev ? { ...prev, role: value as any } : null)}
                 >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
                     <SelectItem value="admin">Administrador</SelectItem>
                     <SelectItem value="contador">Contador</SelectItem>
                     <SelectItem value="operador">Operador</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+                      </SelectContent>
+                    </Select>
+                  </div>
               <div className="flex items-center space-x-2">
                 <Switch
                   id="edit_is_active"
@@ -1043,13 +1043,13 @@ export default function ConfigurationModule() {
                   onCheckedChange={(checked) => setSelectedUser(prev => prev ? { ...prev, is_active: checked } : null)}
                 />
                 <Label htmlFor="edit_is_active">Usuario Activo</Label>
-              </div>
-            </div>
+                  </div>
+                  </div>
           )}
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setShowEditUserModal(false)}>
               Cancelar
-            </Button>
+                  </Button>
             <Button onClick={handleEditUser} disabled={isEditingUser}>
               {isEditingUser ? (
                 <>
@@ -1062,8 +1062,8 @@ export default function ConfigurationModule() {
                   Guardar Cambios
                 </>
               )}
-            </Button>
-          </div>
+                  </Button>
+                    </div>
         </DialogContent>
       </Dialog>
     </div>

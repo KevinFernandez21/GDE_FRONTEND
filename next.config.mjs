@@ -20,7 +20,8 @@ const nextConfig = {
 
   // Rewrite /api/* to the backend API
   async rewrites() {
-    const backendUrl = 'http://localhost:8000';
+    // Use environment variable for backend URL, fallback to localhost for development
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
     console.log('[Next.js Rewrites] Backend URL:', backendUrl);
 
     return [

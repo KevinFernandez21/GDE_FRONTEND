@@ -369,7 +369,7 @@ export default function InventoryModule() {
   }, [products])
 
   return (
-    <div className="space-y-6">
+    <div className="p-6 space-y-6">
       {/* Metrics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card>
@@ -502,40 +502,47 @@ export default function InventoryModule() {
               </div>
 
               {/* Products Table */}
-              <div className="border rounded-lg">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Code</TableHead>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Category</TableHead>
-                      <TableHead>Current Stock</TableHead>
-                      <TableHead>Min Stock</TableHead>
-                      <TableHead>Sale Price</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
+              <div className="border rounded-lg overflow-hidden">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="px-6 py-4">Code</TableHead>
+                        <TableHead className="px-6 py-4">Name</TableHead>
+                        <TableHead className="px-6 py-4">Category</TableHead>
+                        <TableHead className="px-6 py-4">Current Stock</TableHead>
+                        <TableHead className="px-6 py-4">Min Stock</TableHead>
+                        <TableHead className="px-6 py-4">Sale Price</TableHead>
+                        <TableHead className="px-6 py-4">Status</TableHead>
+                        <TableHead className="px-6 py-4">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
                   <TableBody>
                     {isLoading ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center py-8">
-                          Loading products...
+                        <TableCell colSpan={8} className="text-center py-12 px-6">
+                          <div className="flex flex-col items-center space-y-2">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                            <p className="text-gray-500">Loading products...</p>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ) : filteredProducts.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center py-8">
-                          No products found
+                        <TableCell colSpan={8} className="text-center py-12 px-6">
+                          <div className="flex flex-col items-center space-y-2">
+                            <Package className="w-8 h-8 text-gray-400" />
+                            <p className="text-gray-500">No products found</p>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ) : (
                       filteredProducts.map((product) => (
-                        <TableRow key={product.id}>
-                          <TableCell className="font-medium">{product.code}</TableCell>
-                          <TableCell>{product.name}</TableCell>
-                          <TableCell>{product.category || "-"}</TableCell>
-                          <TableCell>
+                        <TableRow key={product.id} className="hover:bg-gray-50">
+                          <TableCell className="px-6 py-4 font-medium">{product.code}</TableCell>
+                          <TableCell className="px-6 py-4">{product.name}</TableCell>
+                          <TableCell className="px-6 py-4">{product.category || "-"}</TableCell>
+                          <TableCell className="px-6 py-4">
                             <span className={`font-semibold ${
                               formatNumber(product.current_stock) === 0 ? "text-red-600" :
                               formatNumber(product.current_stock) <= formatNumber(product.min_stock) ? "text-yellow-600" :
@@ -544,19 +551,20 @@ export default function InventoryModule() {
                               {formatNumber(product.current_stock)}
                             </span>
                           </TableCell>
-                          <TableCell>{formatNumber(product.min_stock)}</TableCell>
-                          <TableCell>${formatPrice(product.sale_price)}</TableCell>
-                          <TableCell>
+                          <TableCell className="px-6 py-4">{formatNumber(product.min_stock)}</TableCell>
+                          <TableCell className="px-6 py-4 font-medium">${formatPrice(product.sale_price)}</TableCell>
+                          <TableCell className="px-6 py-4">
                             <Badge variant={product.status === "active" ? "default" : "secondary"}>
                               {product.status}
                             </Badge>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="px-6 py-4">
                             <div className="flex space-x-2">
                               <Button
                                 variant="outline"
                                 size="sm"
                                 onClick={() => startEditProduct(product)}
+                                className="h-8"
                               >
                                 <Edit className="w-4 h-4" />
                               </Button>
@@ -565,7 +573,7 @@ export default function InventoryModule() {
                                   variant="outline"
                                   size="sm"
                                   onClick={() => handleDeleteProduct(product.id)}
-                                  className="text-red-600 hover:text-red-700"
+                                  className="h-8 text-red-600 hover:text-red-700"
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </Button>
@@ -577,6 +585,7 @@ export default function InventoryModule() {
                     )}
                   </TableBody>
                 </Table>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -625,36 +634,40 @@ export default function InventoryModule() {
               <CardTitle>Import History</CardTitle>
               <CardDescription>View past inventory imports and their results</CardDescription>
             </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>File Name</TableHead>
-                    <TableHead>Imported By</TableHead>
-                    <TableHead>Total Rows</TableHead>
-                    <TableHead>Successful</TableHead>
-                    <TableHead>Failed</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="px-6 py-4">File Name</TableHead>
+                      <TableHead className="px-6 py-4">Imported By</TableHead>
+                      <TableHead className="px-6 py-4">Total Rows</TableHead>
+                      <TableHead className="px-6 py-4">Successful</TableHead>
+                      <TableHead className="px-6 py-4">Failed</TableHead>
+                      <TableHead className="px-6 py-4">Status</TableHead>
+                      <TableHead className="px-6 py-4">Date</TableHead>
+                      <TableHead className="px-6 py-4">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
                 <TableBody>
                   {importHistory.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center py-8">
-                        No import history found
+                      <TableCell colSpan={8} className="text-center py-12 px-6">
+                        <div className="flex flex-col items-center space-y-2">
+                          <History className="w-8 h-8 text-gray-400" />
+                          <p className="text-gray-500">No import history found</p>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ) : (
                     importHistory.map((import_) => (
-                      <TableRow key={import_.id}>
-                        <TableCell className="font-medium">{import_.original_filename}</TableCell>
-                        <TableCell>{import_.full_name || import_.username}</TableCell>
-                        <TableCell>{import_.total_rows}</TableCell>
-                        <TableCell className="text-green-600">{import_.successful_rows}</TableCell>
-                        <TableCell className="text-red-600">{import_.failed_rows}</TableCell>
-                        <TableCell>
+                      <TableRow key={import_.id} className="hover:bg-gray-50">
+                        <TableCell className="px-6 py-4 font-medium">{import_.original_filename}</TableCell>
+                        <TableCell className="px-6 py-4">{import_.full_name || import_.username}</TableCell>
+                        <TableCell className="px-6 py-4">{import_.total_rows}</TableCell>
+                        <TableCell className="px-6 py-4 text-green-600 font-medium">{import_.successful_rows}</TableCell>
+                        <TableCell className="px-6 py-4 text-red-600 font-medium">{import_.failed_rows}</TableCell>
+                        <TableCell className="px-6 py-4">
                           <Badge variant={
                             import_.status === "completed" ? "default" :
                             import_.status === "failed" ? "destructive" :
@@ -664,14 +677,14 @@ export default function InventoryModule() {
                             {import_.status}
                           </Badge>
                         </TableCell>
-                        <TableCell>{new Date(import_.created_at).toLocaleDateString()}</TableCell>
-                        <TableCell>
+                        <TableCell className="px-6 py-4 text-gray-600">{new Date(import_.created_at).toLocaleDateString()}</TableCell>
+                        <TableCell className="px-6 py-4">
                           {user?.role === "admin" && import_.status === "completed" && (
                             <Button
                               variant="outline"
                               size="sm"
                               onClick={() => handleRollbackImport(import_.id)}
-                              className="text-red-600 hover:text-red-700"
+                              className="text-red-600 hover:text-red-700 h-8"
                             >
                               <RotateCcw className="w-4 h-4 mr-1" />
                               Rollback
@@ -683,6 +696,7 @@ export default function InventoryModule() {
                   )}
                 </TableBody>
               </Table>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
