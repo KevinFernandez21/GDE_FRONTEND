@@ -1,6 +1,6 @@
 "use client"
 
-import { Search, Plus, Eye, Edit, Download, Upload, Check, X, Save, Trash2, RowsIcon, QrCode, Scan, FileUp, BarChart3, AlertCircle, CheckCircle2, Clock, Package } from "lucide-react"
+import { Search, Plus, Eye, Edit, Download, Upload, Check, X, Save, Trash2, RowsIcon, QrCode, Scan, FileUp, BarChart3, AlertCircle, CheckCircle2, Clock, Package, ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -14,12 +14,12 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import BulkImportModal from "@/components/bulk-import-modal"
 import BulkGuideImportModal from "@/components/bulk-guide-import-modal"
-import ScanningInterface from "@/components/scanning-interface"
+import GuideComparisonUpload from "@/components/guide-comparison-upload"
 import GuideModal from "@/components/modals/guide-modal"
 import KardexModal from "@/components/modals/kardex-modal"
 import UniversalImportWizard from "@/components/shared/universal-import-wizard"
 import ExportButton from "@/components/shared/export-button"
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useRef, useMemo } from "react"
 import { toast } from "sonner"
 import { apiClient } from "@/lib/api"
 
@@ -54,24 +54,38 @@ export default function TraceabilityModule() {
   const [hasChanges, setHasChanges] = useState(false)
   const [loading, setLoading] = useState(true)
   
-  // Search states
+  // Search and pagination states
   const [searchGuides, setSearchGuides] = useState("")
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  
+  // Pagination state - Server-side pagination for performance
+  const [currentPageGuides, setCurrentPageGuides] = useState(1)
+  const [pageSizeGuides] = useState(100) // 100 guías por página
+  const [totalGuides, setTotalGuides] = useState(0)
+  const totalPagesGuides = Math.ceil(totalGuides / pageSizeGuides)
+  
+  // Guías de despacho state - declared early to avoid initialization errors
+  const [guiasDespacho, setGuiasDespacho] = useState([])
+  const [kardexData, setKardexData] = useState([])
+  
+  // Bulk selection state
+  const [selectedGuides, setSelectedGuides] = useState<Set<string | number>>(new Set())
+  
+  // Calculate isSelectAllGuides based on current state (derived value)
+  const isSelectAllGuides = useMemo(() => {
+    if (guiasDespacho.length === 0) return false
+    return guiasDespacho.length > 0 && guiasDespacho.every(g => selectedGuides.has(g.id))
+  }, [guiasDespacho, selectedGuides])
+  
+  // Ref to prevent loop when resetting page from search
+  const isSearchResetRef = useRef(false)
 
-  // Filter function for guides
-  const filterGuides = (guides: any[]) => {
-    if (!searchGuides) return guides
-    return guides.filter(guia => 
-      (guia.codigo || "").toLowerCase().includes(searchGuides.toLowerCase()) ||
-      (guia.cliente || "").toLowerCase().includes(searchGuides.toLowerCase()) ||
-      (guia.estado || "").toLowerCase().includes(searchGuides.toLowerCase()) ||
-      (guia.usuario || "").toLowerCase().includes(searchGuides.toLowerCase())
-    )
-  }
+  // Server-side filtering is handled in fetchGuiasDespacho
+  // No client-side filtering needed
 
   // Delete guide function
-  const handleDeleteGuide = async (guideId: string) => {
+  const handleDeleteGuide = async (guideId: string | number) => {
     setIsDeleting(true)
     try {
       // Call API to delete from database
@@ -80,10 +94,10 @@ export default function TraceabilityModule() {
       })
       
       if (response.data || response.message) {
-        // Remove from local state only after successful API call
-        setGuiasDespacho(prev => prev.filter(guia => guia.id !== guideId))
         toast.success("Guía eliminada exitosamente")
         setDeleteTarget(null)
+        // Reload current page
+        fetchGuiasDespacho(currentPageGuides)
       } else {
         toast.error(response.error || "Error al eliminar la guía")
       }
@@ -94,6 +108,73 @@ export default function TraceabilityModule() {
       setIsDeleting(false)
     }
   }
+  
+  // Handle individual guide selection
+  const handleToggleSelectGuide = (guideId: string | number) => {
+    const newSelected = new Set(selectedGuides)
+    if (newSelected.has(guideId)) {
+      newSelected.delete(guideId)
+    } else {
+      newSelected.add(guideId)
+    }
+    setSelectedGuides(newSelected)
+    // isSelectAllGuides is now calculated automatically via useMemo
+  }
+
+  // Handle select all guides
+  const handleSelectAllGuides = () => {
+    if (isSelectAllGuides) {
+      setSelectedGuides(new Set())
+    } else {
+      const allIds = new Set(guiasDespacho.map(g => g.id))
+      setSelectedGuides(allIds)
+    }
+    // isSelectAllGuides is now calculated automatically via useMemo
+  }
+  
+  // Handle bulk delete guides
+  const handleBulkDeleteGuides = async () => {
+    if (selectedGuides.size === 0) {
+      toast.info("Selecciona al menos una guía para eliminar")
+      return
+    }
+
+    const startTime = Date.now()
+    const loadingToast = toast.loading(`Eliminando ${selectedGuides.size} guía(s)...`)
+
+    try {
+      // Convert Set to Array and ensure integers
+      const guideIds = Array.from(selectedGuides).map(id => {
+        // Ensure ID is integer (delivery guides use integer IDs)
+        return typeof id === 'string' ? parseInt(id, 10) : id
+      })
+
+      const response = await apiClient.request("/delivery-guides/bulk-delete", {
+        method: "POST",
+        body: JSON.stringify({ guide_ids: guideIds })
+      })
+
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
+
+      if (response.data || response.message) {
+        toast.dismiss(loadingToast)
+        toast.success(`${selectedGuides.size} guía(s) eliminada(s) exitosamente`, {
+          description: `Operación completada en ${elapsed}s`
+        })
+        setSelectedGuides(new Set())
+        // isSelectAllGuides is now calculated automatically via useMemo
+        // Reload current page
+        await fetchGuiasDespacho(currentPageGuides, searchGuides)
+      } else {
+        toast.dismiss(loadingToast)
+        toast.error(response.error || "Error al eliminar las guías")
+      }
+    } catch (error) {
+      toast.dismiss(loadingToast)
+      toast.error("Error al eliminar las guías")
+      console.error("Bulk delete guides error:", error)
+    }
+  }
 
   // Guide Master state
   const [trackingSummary, setTrackingSummary] = useState<TrackingSummary | null>(null)
@@ -102,16 +183,29 @@ export default function TraceabilityModule() {
   const [pendingGuides, setPendingGuides] = useState<any[]>([])
   const [unknownGuides, setUnknownGuides] = useState<any[]>([])
 
-  const fetchGuiasDespacho = async () => {
+
+  const fetchGuiasDespacho = useCallback(async (page: number, search: string) => {
     try {
+      setLoading(true)
       const token = localStorage.getItem('gde_token')
       if (!token) {
         toast.error('No se encontró token de autenticación')
         return
       }
 
+      // Build query parameters
+      const params = new URLSearchParams({
+        page: page.toString(),
+        size: pageSizeGuides.toString()
+      })
+      
+      // Add search filter if present
+      if (search && search.trim()) {
+        params.append("search", search.trim())
+      }
+
       const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1'
-      const response = await fetch(`${API_BASE_URL}/delivery-guides/?page=1&size=50`, {
+      const response = await fetch(`${API_BASE_URL}/delivery-guides/?${params.toString()}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -121,15 +215,24 @@ export default function TraceabilityModule() {
       if (response.ok) {
         const result = await response.json()
         setGuiasDespacho(result.items || [])
+        setTotalGuides(result.total || 0)
+        // Update currentPageGuides to match the page we requested
+        setCurrentPageGuides(result.page || page)
       } else {
         const errorData = await response.json()
         toast.error(errorData.detail || 'Error al cargar guías de despacho')
+        setGuiasDespacho([])
+        setTotalGuides(0)
       }
     } catch (error) {
       console.error('Error fetching delivery guides:', error)
       toast.error('Error de conexión con el servidor')
+      setGuiasDespacho([])
+      setTotalGuides(0)
+    } finally {
+      setLoading(false)
     }
-  }
+  }, [pageSizeGuides])
 
   const fetchKardexData = async () => {
     try {
@@ -223,14 +326,12 @@ export default function TraceabilityModule() {
     }
   }
 
-  const fetchTraceabilityData = async () => {
-    setLoading(true)
-    await Promise.all([fetchGuiasDespacho(), fetchKardexData(), fetchGuideMasterData()])
-    setLoading(false)
-  }
+  // fetchTraceabilityData removed - now each fetch is independent with pagination
 
   useEffect(() => {
-    fetchTraceabilityData()
+    fetchGuiasDespacho(1, "") // Initial load
+    fetchKardexData()
+    fetchGuideMasterData()
 
     // Auto-refresh tracking summary every 30 seconds
     const interval = setInterval(() => {
@@ -238,10 +339,49 @@ export default function TraceabilityModule() {
     }, 30000)
 
     return () => clearInterval(interval)
-  }, [])
-
-  const [guiasDespacho, setGuiasDespacho] = useState([])
-  const [kardexData, setKardexData] = useState([])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // Only run on mount
+  
+  // Reload guides when search changes - reset to page 1
+  useEffect(() => {
+    isSearchResetRef.current = true
+    if (currentPageGuides !== 1) {
+      setCurrentPageGuides(1)
+    } else {
+      // If already on page 1, fetch directly
+      fetchGuiasDespacho(1, searchGuides)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchGuides])
+  
+  // Load guides when page changes
+  useEffect(() => {
+    // Skip if this is from a search reset (will be handled by search effect)
+    if (isSearchResetRef.current && currentPageGuides === 1) {
+      isSearchResetRef.current = false
+      return
+    }
+    fetchGuiasDespacho(currentPageGuides, searchGuides)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPageGuides])
+  
+  // Clear selections when guides change (new page loads)
+  useEffect(() => {
+    if (guiasDespacho.length === 0) {
+      setSelectedGuides(new Set())
+      return
+    }
+    
+    // Clean up selections: remove IDs that are no longer in the current page
+    setSelectedGuides(prev => {
+      const currentIds = new Set(guiasDespacho.map(g => g.id))
+      const hasInvalidSelections = Array.from(prev).some(id => !currentIds.has(id))
+      if (hasInvalidSelections) {
+        return new Set(Array.from(prev).filter(id => currentIds.has(id)))
+      }
+      return prev
+    })
+  }, [guiasDespacho])
 
   const handleCellClick = useCallback((rowId: number, field: string, currentValue: any, tab: string) => {
     setEditingCell({ rowId, field, tab })
@@ -734,19 +874,19 @@ export default function TraceabilityModule() {
                   onChange={(e) => setSearchGuides(e.target.value)}
                 />
               </div>
-              <Select>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Estado" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="pendiente">Pendiente</SelectItem>
-                  <SelectItem value="despachado">Despachado</SelectItem>
-                  <SelectItem value="transito">En Tránsito</SelectItem>
-                  <SelectItem value="entregado">Entregado</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
             <div className="flex gap-2">
+              {selectedGuides.size > 0 && (
+                <Button
+                  onClick={handleBulkDeleteGuides}
+                  disabled={isDeleting}
+                  variant="destructive"
+                  className="bg-red-600 hover:bg-red-700"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Eliminar {selectedGuides.size} Seleccionada{selectedGuides.size !== 1 ? 's' : ''}
+                </Button>
+              )}
               <Button variant="outline" onClick={() => setShowDeliveryGuideImport(true)}>
                 <Upload className="w-4 h-4 mr-2" />
                 Importar Guías
@@ -770,54 +910,149 @@ export default function TraceabilityModule() {
               <CardDescription>Últimas guías registradas en el sistema</CardDescription>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Código Guía</TableHead>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead>Cliente</TableHead>
-                    <TableHead>Productos</TableHead>
-                    <TableHead>Estado</TableHead>
-                    <TableHead>Usuario Responsable</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filterGuides(guiasDespacho).map((guia) => {
-                    return (
-                      <TableRow key={guia.id}>
-                        <TableCell>{renderEditableCell(guia, 'codigo', 'guias')}</TableCell>
-                        <TableCell>{renderEditableCell(guia, 'fecha', 'guias')}</TableCell>
-                        <TableCell>{renderEditableCell(guia, 'cliente', 'guias')}</TableCell>
-                        <TableCell>{renderEditableCell(guia, 'productos', 'guias')}</TableCell>
-                        <TableCell>{renderEditableCell(guia, 'estado', 'guias')}</TableCell>
-                        <TableCell>{renderEditableCell(guia, 'usuario', 'guias')}</TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button 
-                              variant="outline" 
-                              size="sm"
-                              onClick={() => setDeleteTarget(guia)}
-                              className="h-8 text-red-600 hover:text-red-700 hover:bg-red-50"
-                              title="Eliminar guía"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
+              {loading ? (
+                <div className="text-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                  <p className="text-gray-500 mt-2">Cargando guías...</p>
+                </div>
+              ) : (
+                <>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="px-6 py-4 w-12">
+                          <Checkbox
+                            checked={isSelectAllGuides}
+                            onCheckedChange={handleSelectAllGuides}
+                            aria-label="Seleccionar todas"
+                          />
+                        </TableHead>
+                        <TableHead>Código Guía</TableHead>
+                        <TableHead>Fecha</TableHead>
+                        <TableHead>Cliente</TableHead>
+                        <TableHead>Productos</TableHead>
+                        <TableHead>Estado</TableHead>
+                        <TableHead>Usuario Responsable</TableHead>
+                        <TableHead className="text-right">Acciones</TableHead>
                       </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {guiasDespacho.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={8} className="text-center py-12 px-6">
+                            <div className="flex flex-col items-center space-y-2">
+                              <Package className="w-8 h-8 text-gray-400" />
+                              <p className="text-gray-500">No se encontraron guías</p>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        guiasDespacho.map((guia) => (
+                          <TableRow key={guia.id}>
+                            <TableCell className="px-6 py-4 w-12">
+                              <Checkbox
+                                checked={selectedGuides.has(guia.id)}
+                                onCheckedChange={() => handleToggleSelectGuide(guia.id)}
+                                aria-label={`Seleccionar ${guia.codigo || guia.id}`}
+                              />
+                            </TableCell>
+                            <TableCell className="font-mono text-sm">{guia.codigo || "-"}</TableCell>
+                            <TableCell>{guia.fecha ? new Date(guia.fecha).toLocaleDateString() : "-"}</TableCell>
+                            <TableCell>{guia.cliente || "-"}</TableCell>
+                            <TableCell>{guia.productos || 0}</TableCell>
+                            <TableCell>
+                              <Badge variant={guia.estado === "entregado" ? "default" : "secondary"}>
+                                {guia.estado || "-"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>{guia.usuario || "-"}</TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-2">
+                                <Button 
+                                  variant="outline" 
+                                  size="sm"
+                                  onClick={() => setDeleteTarget(guia)}
+                                  className="h-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                  title="Eliminar guía"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                  
+                  {/* Pagination Controls */}
+                  {totalPagesGuides > 1 && (
+                    <div className="flex items-center justify-between px-6 py-4 border-t">
+                      <div className="text-sm text-gray-600">
+                        Mostrando {((currentPageGuides - 1) * pageSizeGuides) + 1} - {Math.min(currentPageGuides * pageSizeGuides, totalGuides)} de {totalGuides} guías
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setCurrentPageGuides(prev => Math.max(1, prev - 1))}
+                          disabled={currentPageGuides === 1 || loading}
+                        >
+                          <ChevronLeft className="w-4 h-4 mr-1" />
+                          Anterior
+                        </Button>
+                        
+                        {/* Page numbers */}
+                        <div className="flex items-center space-x-1">
+                          {Array.from({ length: Math.min(5, totalPagesGuides) }, (_, i) => {
+                            let pageNum: number
+                            if (totalPagesGuides <= 5) {
+                              pageNum = i + 1
+                            } else if (currentPageGuides <= 3) {
+                              pageNum = i + 1
+                            } else if (currentPageGuides >= totalPagesGuides - 2) {
+                              pageNum = totalPagesGuides - 4 + i
+                            } else {
+                              pageNum = currentPageGuides - 2 + i
+                            }
+                            
+                            return (
+                              <Button
+                                key={pageNum}
+                                variant={currentPageGuides === pageNum ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => setCurrentPageGuides(pageNum)}
+                                disabled={loading}
+                                className={currentPageGuides === pageNum ? "bg-blue-600 text-white" : ""}
+                              >
+                                {pageNum}
+                              </Button>
+                            )
+                          })}
+                        </div>
+                        
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setCurrentPageGuides(prev => Math.min(totalPagesGuides, prev + 1))}
+                          disabled={currentPageGuides === totalPagesGuides || loading}
+                        >
+                          Siguiente
+                          <ChevronRight className="w-4 h-4 ml-1" />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
 
 
-        {/* TAB: ESCANEO DE GUÍAS (Original) */}
+        {/* TAB: ESCANEO DE GUÍAS (Comparación de Archivos) */}
         <TabsContent value="scanning" className="space-y-4">
-          <ScanningInterface />
+          <GuideComparisonUpload />
         </TabsContent>
       </Tabs>
 

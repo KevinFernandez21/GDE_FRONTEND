@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { Search, Filter, Download, Plus, Eye, Edit, Trash2, Package, AlertTriangle, Upload, History, RotateCcw, Clock, User } from "lucide-react"
+import { Search, Filter, Download, Plus, Eye, Edit, Trash2, Package, AlertTriangle, Upload, History, RotateCcw, Clock, User, ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,13 +31,15 @@ import InventoryImportWizard from "./inventory-import-wizard"
 interface Product {
   id: string
   code: string
+  sku?: string // Campo opcional para compatibilidad con backend
   name: string
   description?: string
   category?: string
   brand?: string
   model?: string
   unit_of_measure: string
-  purchase_price: number
+  cost_price?: number // Precio de costo (backend)
+  purchase_price?: number // Alias para compatibilidad
   sale_price: number
   current_stock: number
   min_stock: number
@@ -45,10 +48,11 @@ interface Product {
   barcode?: string
   weight?: number
   dimensions?: string
-  status: string
-  created_by: string
-  created_at: string
-  updated_at: string
+  status?: string
+  is_active?: boolean
+  created_by?: string
+  created_at?: string
+  updated_at?: string
 }
 
 interface ImportHistory {
@@ -77,6 +81,10 @@ interface AuditActivity {
 export default function InventoryModule() {
   const { user } = useAuth()
   const [activeTab, setActiveTab] = useState("products")
+  
+  // Selection state for bulk operations
+  const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set())
+  const [isSelectAll, setIsSelectAll] = useState(false)
 
   // Helper function to safely format numbers
   const formatPrice = (price: any): string => {
@@ -104,7 +112,12 @@ export default function InventoryModule() {
   const [isLoading, setIsLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [categoryFilter, setCategoryFilter] = useState("")
-  const [statusFilter, setStatusFilter] = useState("")
+  
+  // Pagination state - Server-side pagination for performance
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize] = useState(100) // 100 products per page
+  const [totalProducts, setTotalProducts] = useState(0)
+  const totalPages = Math.ceil(totalProducts / pageSize)
 
   // Import state
   const [showImportWizard, setShowImportWizard] = useState(false)
@@ -118,50 +131,80 @@ export default function InventoryModule() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [productForm, setProductForm] = useState({
     code: "",
+    sku: "",
     name: "",
     description: "",
     category: "",
     brand: "",
     model: "",
     unit_of_measure: "unit",
-    purchase_price: 0,
+    cost_price: 0,
     sale_price: 0,
     current_stock: 0,
     min_stock: 0,
-    max_stock: 1000,
-    location: "",
-    barcode: "",
-    weight: 0,
-    dimensions: ""
+    max_stock: 0
   })
+  
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({})
+  const [isSaving, setIsSaving] = useState(false)
 
   // Delete confirmation state
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
 
-  // Load products
-  const loadProducts = useCallback(async () => {
+  // Load products with server-side pagination (optimized for performance)
+  const loadProducts = useCallback(async (page: number) => {
     try {
       setIsLoading(true)
-      const response = await apiClient.request<{items: Product[], total: number, page: number, size: number}>("/inventory/products", {
-        method: "GET"
+      
+      // Build query parameters
+      const params = new URLSearchParams({
+        page: page.toString(),
+        size: pageSize.toString(),
+        active_only: "false" // TEMPORAL: Include inactive products
       })
+      
+      // Add search filter if present
+      if (searchQuery.trim()) {
+        params.append("search", searchQuery.trim())
+      }
+      
+      // Add category filter if present
+      if (categoryFilter && categoryFilter !== "all") {
+        params.append("category", categoryFilter)
+      }
+      
+      // Load products for current page
+      const response = await apiClient.request<{items: Product[], total: number, page: number, size: number}>(
+        `/inventory/products?${params.toString()}`,
+        {
+          method: "GET"
+        }
+      )
 
       if (response.data) {
-        // La API devuelve un objeto con items, extraer el array de productos
-        setProducts(response.data.items || [])
+        // Map products for compatibility
+        const products = (response.data.items || []).map((product: any) => ({
+          ...product,
+          code: product.code || product.sku || "",
+          sku: product.sku || product.code || ""
+        }))
+        setProducts(products)
+        setTotalProducts(response.data.total || 0)
       } else {
         toast.error(response.error || "Error loading products")
-        setProducts([]) // Asegurar que products sea un array
+        setProducts([])
+        setTotalProducts(0)
       }
     } catch (error) {
       toast.error("Error connecting to server")
       console.error("Load products error:", error)
-      setProducts([]) // Asegurar que products sea un array
+      setProducts([])
+      setTotalProducts(0)
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [pageSize, searchQuery, categoryFilter])
 
   // Load import history
   const loadImportHistory = useCallback(async () => {
@@ -195,10 +238,28 @@ export default function InventoryModule() {
 
   // Load data on mount
   useEffect(() => {
-    loadProducts()
+    loadProducts(1) // Initial load
     loadImportHistory()
     loadAuditActivity()
-  }, [loadProducts, loadImportHistory, loadAuditActivity])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // Only run on mount
+  
+  // Reload products when search or filters change (reset to page 1)
+  useEffect(() => {
+    if (currentPage !== 1) {
+      setCurrentPage(1)
+    } else {
+      // If already on page 1, reload
+      loadProducts(1)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, categoryFilter])
+  
+  // Load products when page changes
+  useEffect(() => {
+    loadProducts(currentPage)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage])
 
 
   // Handle rollback import
@@ -214,7 +275,7 @@ export default function InventoryModule() {
 
       if (response.data) {
         toast.success(response.message || "Importación revertida exitosamente")
-        loadProducts()
+        loadProducts(currentPage)
         loadImportHistory()
         loadAuditActivity()
       } else {
@@ -227,15 +288,88 @@ export default function InventoryModule() {
   }
 
   // Handle create/update product
+  // Validate form
+  const validateForm = (): boolean => {
+    const errors: Record<string, string> = {}
+    
+    if (!productForm.name.trim()) {
+      errors.name = "El nombre es requerido"
+    }
+    
+    if (!productForm.code?.trim() && !productForm.sku?.trim()) {
+      errors.code = "El código o SKU es requerido"
+    }
+    
+    if (productForm.cost_price < 0) {
+      errors.cost_price = "El precio de costo no puede ser negativo"
+    }
+    
+    if (productForm.sale_price < 0) {
+      errors.sale_price = "El precio de venta no puede ser negativo"
+    }
+    
+    if (productForm.current_stock < 0) {
+      errors.current_stock = "El stock no puede ser negativo"
+    }
+    
+    if (productForm.min_stock < 0) {
+      errors.min_stock = "El stock mínimo no puede ser negativo"
+    }
+    
+    if (productForm.max_stock > 0 && productForm.max_stock < productForm.min_stock) {
+      errors.max_stock = "El stock máximo debe ser mayor o igual al mínimo"
+    }
+    
+    setFormErrors(errors)
+    return Object.keys(errors).length === 0
+  }
+
   const handleSaveProduct = async () => {
+    // Validate form
+    if (!validateForm()) {
+      toast.error("Por favor corrige los errores en el formulario")
+      return
+    }
+    
     try {
+      setIsSaving(true)
       const isEditing = !!editingProduct
+
+      // Prepare data - send DB field names directly
+      const productData: any = {
+        name: productForm.name.trim(),
+        description: productForm.description?.trim() || null,
+        category: productForm.category?.trim() || null,
+        brand: productForm.brand?.trim() || null,
+        model: productForm.model?.trim() || null,
+        unit_of_measure: productForm.unit_of_measure,
+        // Use DB column names directly
+        sale_price: productForm.sale_price || 0,
+        cost_price: productForm.cost_price || 0,
+        current_stock: productForm.current_stock || 0,
+        min_stock: productForm.min_stock || 0,
+        max_stock: productForm.max_stock || 0,
+      }
+      
+      // Use code or sku (prefer code, fallback to sku)
+      if (productForm.code?.trim()) {
+        productData.code = productForm.code.trim()
+        productData.sku = productForm.code.trim() // Ensure both are set
+      } else if (productForm.sku?.trim()) {
+        productData.sku = productForm.sku.trim()
+        productData.code = productForm.sku.trim()
+      }
+      
+      // For new products, set initial_stock
+      if (!isEditing) {
+        productData.initial_stock = productForm.current_stock || 0
+      }
 
       const response = await apiClient.request(
         isEditing ? `/inventory/products/${editingProduct.id}` : "/inventory/products",
         {
           method: isEditing ? "PUT" : "POST",
-          body: JSON.stringify(productForm)
+          body: JSON.stringify(productData)
         }
       )
 
@@ -244,14 +378,19 @@ export default function InventoryModule() {
         setShowProductDialog(false)
         setEditingProduct(null)
         resetProductForm()
-        loadProducts()
+        setFormErrors({})
+        // Reload current page instead of page 1
+        loadProducts(currentPage)
         loadAuditActivity()
       } else {
         toast.error(response.error || "Error al guardar el producto")
       }
-    } catch (error) {
-      toast.error("Error al guardar el producto")
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.detail || error.message || "Error al guardar el producto"
+      toast.error(errorMessage)
       console.error("Save product error:", error)
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -266,7 +405,7 @@ export default function InventoryModule() {
 
       if (response.data || response.message) {
         toast.success("Producto eliminado exitosamente")
-        loadProducts()
+        loadProducts(currentPage)
         loadAuditActivity()
         setDeleteTarget(null)
       } else {
@@ -280,53 +419,132 @@ export default function InventoryModule() {
     }
   }
 
+  // Handle individual product selection
+  const handleToggleSelect = (productId: string) => {
+    const newSelected = new Set(selectedProducts)
+    if (newSelected.has(productId)) {
+      newSelected.delete(productId)
+    } else {
+      newSelected.add(productId)
+    }
+    setSelectedProducts(newSelected)
+    setIsSelectAll(newSelected.size === filteredProducts.length && filteredProducts.length > 0)
+  }
+
+  // Handle select all
+  const handleSelectAll = () => {
+    if (isSelectAll) {
+      setSelectedProducts(new Set())
+    } else {
+      const allIds = new Set(filteredProducts.map(p => p.id))
+      setSelectedProducts(allIds)
+    }
+    setIsSelectAll(!isSelectAll)
+  }
+
+  // Handle bulk delete with progress feedback
+  const handleBulkDelete = async () => {
+    if (selectedProducts.size === 0) {
+      toast.info("Selecciona al menos un producto para eliminar")
+      return
+    }
+
+    if (!confirm(`¿Estás seguro de que deseas eliminar ${selectedProducts.size} producto(s)? Esta acción no se puede deshacer.`)) {
+      return
+    }
+
+    try {
+      setIsDeleting(true)
+      const productIdsArray = Array.from(selectedProducts)
+      const count = productIdsArray.length
+      
+      // Show loading toast
+      const loadingToast = toast.loading(`Eliminando ${count} producto(s)...`, {
+        description: "Por favor espera, esto puede tomar unos momentos"
+      })
+      
+      const startTime = Date.now()
+      const response = await apiClient.request("/inventory/products/bulk-delete", {
+        method: "POST",
+        body: JSON.stringify(productIdsArray),
+        headers: {
+          "Content-Type": "application/json"
+        }
+      })
+
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
+
+      if (response.data || response.message) {
+        toast.dismiss(loadingToast)
+        toast.success(`${count} producto(s) eliminado(s) exitosamente`, {
+          description: `Operación completada en ${elapsed}s`
+        })
+        setSelectedProducts(new Set())
+        setIsSelectAll(false)
+        // Reload products
+        await loadProducts(currentPage)
+        loadAuditActivity()
+      } else {
+        toast.dismiss(loadingToast)
+        toast.error(response.error || "Error al eliminar los productos")
+      }
+    } catch (error) {
+      toast.error("Error al eliminar los productos", {
+        description: error instanceof Error ? error.message : "Error desconocido"
+      })
+      console.error("Bulk delete error:", error)
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   // Reset product form
   const resetProductForm = () => {
     setProductForm({
       code: "",
+      sku: "",
       name: "",
       description: "",
       category: "",
       brand: "",
       model: "",
       unit_of_measure: "unit",
-      purchase_price: 0,
+      cost_price: 0,
       sale_price: 0,
       current_stock: 0,
       min_stock: 0,
-      max_stock: 1000,
-      location: "",
-      barcode: "",
-      weight: 0,
-      dimensions: ""
+      max_stock: 0
     })
+    setFormErrors({})
   }
 
   // Start editing product
   const startEditProduct = (product: Product) => {
     setEditingProduct(product)
+    // Map product data to form, handling both cost_price and purchase_price
+    const productAny = product as any
     setProductForm({
-      code: product.code,
+      code: product.code || product.sku || "",
+      sku: product.sku || product.code || "",
       name: product.name,
       description: product.description || "",
       category: product.category || "",
       brand: product.brand || "",
       model: product.model || "",
-      unit_of_measure: product.unit_of_measure,
-      purchase_price: product.purchase_price,
-      sale_price: product.sale_price,
-      current_stock: product.current_stock,
-      min_stock: product.min_stock,
-      max_stock: product.max_stock,
-      location: product.location || "",
-      barcode: product.barcode || "",
-      weight: product.weight || 0,
-      dimensions: product.dimensions || ""
+      unit_of_measure: product.unit_of_measure || "unit",
+      cost_price: productAny.cost_price || productAny.purchase_price || 0,
+      sale_price: product.sale_price || 0,
+      current_stock: product.current_stock || 0,
+      min_stock: product.min_stock || 0,
+      max_stock: product.max_stock || 0
     })
+    setFormErrors({})
     setShowProductDialog(true)
   }
 
   // Filter products
+  // Server-side filtering is handled in loadProducts
+  // Products are already filtered by search and category on the server
   const filteredProducts = useMemo(() => {
     // Asegurar que products sea un array
     if (!Array.isArray(products)) {
@@ -334,18 +552,29 @@ export default function InventoryModule() {
       return []
     }
     
-    return products.filter(product => {
-      const matchesSearch = searchQuery === "" ||
-        product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (product.code && product.code.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        (product.description && product.description.toLowerCase().includes(searchQuery.toLowerCase()))
+    // Return products as-is since filtering is done server-side
+    return products
+  }, [products])
 
-      const matchesCategory = categoryFilter === "" || product.category === categoryFilter
-      const matchesStatus = statusFilter === "" || product.status === statusFilter
-
-      return matchesSearch && matchesCategory && matchesStatus
+  // Sync select all state when filtered products change
+  useEffect(() => {
+    if (filteredProducts.length === 0) {
+      setIsSelectAll(false)
+      setSelectedProducts(new Set())
+      return
+    }
+    
+    // Clean up selection: remove products that are no longer in filtered list
+    const filteredIds = new Set(filteredProducts.map(p => p.id))
+    setSelectedProducts(prev => {
+      const cleaned = new Set(
+        Array.from(prev).filter(id => filteredIds.has(id))
+      )
+      const allSelected = filteredProducts.length > 0 && filteredProducts.every(p => cleaned.has(p.id))
+      setIsSelectAll(allSelected)
+      return cleaned
     })
-  }, [products, searchQuery, categoryFilter, statusFilter])
+  }, [filteredProducts])
 
   // Get stock metrics
   const stockMetrics = useMemo(() => {
@@ -467,6 +696,17 @@ export default function InventoryModule() {
                   <CardDescription>Gestiona tu catálogo de productos y niveles de stock</CardDescription>
                 </div>
                 <div className="flex space-x-2">
+                  {selectedProducts.size > 0 && (
+                    <Button
+                      onClick={handleBulkDelete}
+                      disabled={isDeleting}
+                      variant="destructive"
+                      className="bg-red-600 hover:bg-red-700"
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Eliminar {selectedProducts.size} Seleccionado{selectedProducts.size !== 1 ? 's' : ''}
+                    </Button>
+                  )}
                   <Button
                     onClick={() => {
                       resetProductForm()
@@ -503,17 +743,6 @@ export default function InventoryModule() {
                     ))}
                   </SelectContent>
                 </Select>
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="w-32">
-                    <SelectValue placeholder="Todos los Estados" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos los Estados</SelectItem>
-                    <SelectItem value="active">Activo</SelectItem>
-                    <SelectItem value="inactive">Inactivo</SelectItem>
-                    <SelectItem value="discontinued">Descontinuado</SelectItem>
-                  </SelectContent>
-                </Select>
               </div>
 
               {/* Products Table */}
@@ -522,6 +751,13 @@ export default function InventoryModule() {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="px-6 py-4 w-12">
+                          <Checkbox
+                            checked={isSelectAll}
+                            onCheckedChange={handleSelectAll}
+                            aria-label="Seleccionar todos"
+                          />
+                        </TableHead>
                         <TableHead className="px-6 py-4">Código</TableHead>
                         <TableHead className="px-6 py-4">Nombre</TableHead>
                         <TableHead className="px-6 py-4">Categoría</TableHead>
@@ -535,7 +771,7 @@ export default function InventoryModule() {
                   <TableBody>
                     {isLoading ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center py-12 px-6">
+                        <TableCell colSpan={9} className="text-center py-12 px-6">
                           <div className="flex flex-col items-center space-y-2">
                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                             <p className="text-gray-500">Cargando productos...</p>
@@ -544,7 +780,7 @@ export default function InventoryModule() {
                       </TableRow>
                     ) : filteredProducts.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center py-12 px-6">
+                        <TableCell colSpan={9} className="text-center py-12 px-6">
                           <div className="flex flex-col items-center space-y-2">
                             <Package className="w-8 h-8 text-gray-400" />
                             <p className="text-gray-500">No se encontraron productos</p>
@@ -554,7 +790,16 @@ export default function InventoryModule() {
                     ) : (
                       filteredProducts.map((product) => (
                         <TableRow key={product.id} className="hover:bg-gray-50">
-                          <TableCell className="px-6 py-4 font-medium">{product.code}</TableCell>
+                          <TableCell className="px-6 py-4 w-12">
+                            <Checkbox
+                              checked={selectedProducts.has(product.id)}
+                              onCheckedChange={() => handleToggleSelect(product.id)}
+                              aria-label={`Seleccionar ${product.name}`}
+                            />
+                          </TableCell>
+                          <TableCell className="px-6 py-4 font-medium font-mono text-sm">
+                            {product.code || product.sku || "-"}
+                          </TableCell>
                           <TableCell className="px-6 py-4">{product.name}</TableCell>
                           <TableCell className="px-6 py-4">{product.category || "-"}</TableCell>
                           <TableCell className="px-6 py-4">
@@ -604,6 +849,65 @@ export default function InventoryModule() {
                 </Table>
                 </div>
               </div>
+              
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between px-6 py-4 border-t">
+                  <div className="text-sm text-gray-600">
+                    Mostrando {((currentPage - 1) * pageSize) + 1} - {Math.min(currentPage * pageSize, totalProducts)} de {totalProducts} productos
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      disabled={currentPage === 1 || isLoading}
+                    >
+                      <ChevronLeft className="w-4 h-4 mr-1" />
+                      Anterior
+                    </Button>
+                    
+                    {/* Page numbers */}
+                    <div className="flex items-center space-x-1">
+                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                        let pageNum: number
+                        if (totalPages <= 5) {
+                          pageNum = i + 1
+                        } else if (currentPage <= 3) {
+                          pageNum = i + 1
+                        } else if (currentPage >= totalPages - 2) {
+                          pageNum = totalPages - 4 + i
+                        } else {
+                          pageNum = currentPage - 2 + i
+                        }
+                        
+                        return (
+                          <Button
+                            key={pageNum}
+                            variant={currentPage === pageNum ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setCurrentPage(pageNum)}
+                            disabled={isLoading}
+                            className={currentPage === pageNum ? "bg-blue-600 text-white" : ""}
+                          >
+                            {pageNum}
+                          </Button>
+                        )
+                      })}
+                    </div>
+                    
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                      disabled={currentPage === totalPages || isLoading}
+                    >
+                      Siguiente
+                      <ChevronRight className="w-4 h-4 ml-1" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -635,8 +939,11 @@ export default function InventoryModule() {
                 <div className="bg-blue-50 p-4 rounded-lg">
                   <h4 className="font-medium mb-2">Formato de Archivo Esperado:</h4>
                   <div className="text-sm space-y-1">
-                    <p><strong>Columnas requeridas:</strong> code, name</p>
-                    <p><strong>Columnas opcionales:</strong> description, category, brand, model, unit_of_measure, purchase_price, sale_price, current_stock, min_stock, max_stock, location, barcode, weight, dimensions</p>
+                    <p><strong>Columnas requeridas:</strong> sku/code, name/nombre, cost_price/precio_costo, current_stock/stock</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      💡 El sistema mapea automáticamente variaciones comunes (code→sku, cantidad→current_stock, etc.)
+                    </p>
+                    <p className="mt-2"><strong>Columnas opcionales:</strong> description, category, brand, model, unit_of_measure, sale_price, min_stock, max_stock, location, barcode, weight, dimensions</p>
                   </div>
                 </div>
               </div>
@@ -789,7 +1096,7 @@ export default function InventoryModule() {
               onClose={() => setShowImportWizard(false)}
               onImportComplete={() => {
                 setShowImportWizard(false)
-                loadProducts()
+                loadProducts(1) // Reset to page 1 after import
                 loadImportHistory()
                 loadAuditActivity()
               }}
@@ -800,175 +1107,238 @@ export default function InventoryModule() {
       )}
 
       {/* Product Dialog */}
-      <Dialog open={showProductDialog} onOpenChange={setShowProductDialog}>
-        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+      <Dialog open={showProductDialog} onOpenChange={(open) => {
+        setShowProductDialog(open)
+        if (!open) {
+          resetProductForm()
+          setEditingProduct(null)
+        }
+      }}>
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingProduct ? "Editar Producto" : "Agregar Producto"}</DialogTitle>
             <DialogDescription>
               {editingProduct ? "Actualizar información del producto" : "Agregar un nuevo producto al inventario"}
             </DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="code">Código de Producto *</Label>
-              <Input
-                id="code"
-                value={productForm.code}
-                onChange={(e) => setProductForm(prev => ({ ...prev, code: e.target.value }))}
-                placeholder="SKU-001"
-              />
+          
+          <div className="space-y-6">
+            {/* Información Básica */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Información Básica</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="code">Código/SKU *</Label>
+                  <Input
+                    id="code"
+                    value={productForm.code || productForm.sku}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      setProductForm(prev => ({ ...prev, code: value, sku: value }))
+                    }}
+                    placeholder="SKU-001"
+                    disabled={!!editingProduct} // Bloquear SKU al editar
+                    className={formErrors.code ? "border-red-500" : ""}
+                  />
+                  {editingProduct && (
+                    <p className="text-xs text-gray-500 mt-1">El SKU no se puede modificar</p>
+                  )}
+                  {formErrors.code && <p className="text-sm text-red-500 mt-1">{formErrors.code}</p>}
+                </div>
+                <div>
+                  <Label htmlFor="name">Nombre del Producto *</Label>
+                  <Input
+                    id="name"
+                    value={productForm.name}
+                    onChange={(e) => setProductForm(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="Nombre del producto"
+                    className={formErrors.name ? "border-red-500" : ""}
+                  />
+                  {formErrors.name && <p className="text-sm text-red-500 mt-1">{formErrors.name}</p>}
+                </div>
+                <div className="col-span-2">
+                  <Label htmlFor="description">Descripción</Label>
+                  <Textarea
+                    id="description"
+                    value={productForm.description}
+                    onChange={(e) => setProductForm(prev => ({ ...prev, description: e.target.value }))}
+                    placeholder="Descripción del producto"
+                    rows={2}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="category">Categoría</Label>
+                  <Select 
+                    value={productForm.category || undefined} 
+                    onValueChange={(value) => {
+                      // Handle special "_none_" value to clear category
+                      setProductForm(prev => ({ ...prev, category: value === "_none_" ? "" : value }))
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar categoría (opcional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_none_">Sin categoría</SelectItem>
+                      {categories.filter(cat => cat).map(cat => (
+                        <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                      ))}
+                      {productForm.category && !categories.includes(productForm.category) && (
+                        <SelectItem value={productForm.category}>{productForm.category}</SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="brand">Marca</Label>
+                  <Input
+                    id="brand"
+                    value={productForm.brand}
+                    onChange={(e) => setProductForm(prev => ({ ...prev, brand: e.target.value }))}
+                    placeholder="Nombre de la marca"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="model">Modelo</Label>
+                  <Input
+                    id="model"
+                    value={productForm.model}
+                    onChange={(e) => setProductForm(prev => ({ ...prev, model: e.target.value }))}
+                    placeholder="Número de modelo"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="unit_of_measure">Unidad de Medida</Label>
+                  <Select 
+                    value={productForm.unit_of_measure} 
+                    onValueChange={(value) => setProductForm(prev => ({ ...prev, unit_of_measure: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="unit">Unidad</SelectItem>
+                      <SelectItem value="kg">Kilogramo</SelectItem>
+                      <SelectItem value="gram">Gramo</SelectItem>
+                      <SelectItem value="lb">Libra</SelectItem>
+                      <SelectItem value="liter">Litro</SelectItem>
+                      <SelectItem value="ml">Mililitro</SelectItem>
+                      <SelectItem value="meter">Metro</SelectItem>
+                      <SelectItem value="cm">Centímetro</SelectItem>
+                      <SelectItem value="box">Caja</SelectItem>
+                      <SelectItem value="pack">Paquete</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </div>
-            <div>
-              <Label htmlFor="name">Nombre del Producto *</Label>
-              <Input
-                id="name"
-                value={productForm.name}
-                onChange={(e) => setProductForm(prev => ({ ...prev, name: e.target.value }))}
-                placeholder="Nombre del producto"
-              />
-            </div>
-            <div className="col-span-2">
-              <Label htmlFor="description">Descripción</Label>
-              <Textarea
-                id="description"
-                value={productForm.description}
-                onChange={(e) => setProductForm(prev => ({ ...prev, description: e.target.value }))}
-                placeholder="Descripción del producto"
-              />
-            </div>
-            <div>
-              <Label htmlFor="category">Categoría</Label>
-              <Input
-                id="category"
-                value={productForm.category}
-                onChange={(e) => setProductForm(prev => ({ ...prev, category: e.target.value }))}
-                placeholder="Electrónica"
-              />
-            </div>
-            <div>
-              <Label htmlFor="brand">Marca</Label>
-              <Input
-                id="brand"
-                value={productForm.brand}
-                onChange={(e) => setProductForm(prev => ({ ...prev, brand: e.target.value }))}
-                placeholder="Nombre de la marca"
-              />
-            </div>
-            <div>
-              <Label htmlFor="model">Modelo</Label>
-              <Input
-                id="model"
-                value={productForm.model}
-                onChange={(e) => setProductForm(prev => ({ ...prev, model: e.target.value }))}
-                placeholder="Número de modelo"
-              />
-            </div>
-            <div>
-              <Label htmlFor="unit_of_measure">Unidad de Medida</Label>
-              <Select value={productForm.unit_of_measure} onValueChange={(value) => setProductForm(prev => ({ ...prev, unit_of_measure: value }))}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="unit">Unidad</SelectItem>
-                  <SelectItem value="kg">Kilogramo</SelectItem>
-                  <SelectItem value="lb">Libra</SelectItem>
-                  <SelectItem value="box">Caja</SelectItem>
-                  <SelectItem value="pack">Paquete</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="purchase_price">Precio de Compra</Label>
-              <Input
-                id="purchase_price"
-                type="number"
-                step="0.01"
-                value={productForm.purchase_price}
-                onChange={(e) => setProductForm(prev => ({ ...prev, purchase_price: parseFloat(e.target.value) || 0 }))}
-              />
-            </div>
-            <div>
-              <Label htmlFor="sale_price">Precio de Venta</Label>
-              <Input
-                id="sale_price"
-                type="number"
-                step="0.01"
-                value={productForm.sale_price}
-                onChange={(e) => setProductForm(prev => ({ ...prev, sale_price: parseFloat(e.target.value) || 0 }))}
-              />
-            </div>
-            <div>
-              <Label htmlFor="current_stock">Stock Actual</Label>
-              <Input
-                id="current_stock"
-                type="number"
-                value={productForm.current_stock}
-                onChange={(e) => setProductForm(prev => ({ ...prev, current_stock: parseInt(e.target.value) || 0 }))}
-              />
-            </div>
-            <div>
-              <Label htmlFor="min_stock">Stock Mínimo</Label>
-              <Input
-                id="min_stock"
-                type="number"
-                value={productForm.min_stock}
-                onChange={(e) => setProductForm(prev => ({ ...prev, min_stock: parseInt(e.target.value) || 0 }))}
-              />
-            </div>
-            <div>
-              <Label htmlFor="max_stock">Stock Máximo</Label>
-              <Input
-                id="max_stock"
-                type="number"
-                value={productForm.max_stock}
-                onChange={(e) => setProductForm(prev => ({ ...prev, max_stock: parseInt(e.target.value) || 1000 }))}
-              />
-            </div>
-            <div>
-              <Label htmlFor="location">Ubicación</Label>
-              <Input
-                id="location"
-                value={productForm.location}
-                onChange={(e) => setProductForm(prev => ({ ...prev, location: e.target.value }))}
-                placeholder="Almacén A-1"
-              />
-            </div>
-            <div>
-              <Label htmlFor="barcode">Código de Barras</Label>
-              <Input
-                id="barcode"
-                value={productForm.barcode}
-                onChange={(e) => setProductForm(prev => ({ ...prev, barcode: e.target.value }))}
-                placeholder="1234567890123"
-              />
-            </div>
-            <div>
-              <Label htmlFor="weight">Peso (kg)</Label>
-              <Input
-                id="weight"
-                type="number"
-                step="0.01"
-                value={productForm.weight}
-                onChange={(e) => setProductForm(prev => ({ ...prev, weight: parseFloat(e.target.value) || 0 }))}
-              />
-            </div>
-            <div>
-              <Label htmlFor="dimensions">Dimensiones</Label>
-              <Input
-                id="dimensions"
-                value={productForm.dimensions}
-                onChange={(e) => setProductForm(prev => ({ ...prev, dimensions: e.target.value }))}
-                placeholder="10x5x3 cm"
-              />
+
+            {/* Precios y Stock */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Precios y Stock</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="cost_price">Precio de Costo *</Label>
+                  <Input
+                    id="cost_price"
+                    type="text"
+                    value={productForm.cost_price || ""}
+                    onChange={(e) => {
+                      const value = e.target.value.replace(/[^0-9.]/g, '')
+                      const numValue = value === "" ? 0 : parseFloat(value) || 0
+                      setProductForm(prev => ({ ...prev, cost_price: numValue }))
+                    }}
+                    placeholder="0.00"
+                    className={formErrors.cost_price ? "border-red-500" : ""}
+                  />
+                  {formErrors.cost_price && <p className="text-sm text-red-500 mt-1">{formErrors.cost_price}</p>}
+                </div>
+                <div>
+                  <Label htmlFor="sale_price">Precio de Venta *</Label>
+                  <Input
+                    id="sale_price"
+                    type="text"
+                    value={productForm.sale_price || ""}
+                    onChange={(e) => {
+                      const value = e.target.value.replace(/[^0-9.]/g, '')
+                      const numValue = value === "" ? 0 : parseFloat(value) || 0
+                      setProductForm(prev => ({ ...prev, sale_price: numValue }))
+                    }}
+                    placeholder="0.00"
+                    className={formErrors.sale_price ? "border-red-500" : ""}
+                  />
+                  {formErrors.sale_price && <p className="text-sm text-red-500 mt-1">{formErrors.sale_price}</p>}
+                </div>
+                <div>
+                  <Label htmlFor="current_stock">Stock Actual *</Label>
+                  <Input
+                    id="current_stock"
+                    type="text"
+                    value={productForm.current_stock || ""}
+                    onChange={(e) => {
+                      const value = e.target.value.replace(/[^0-9]/g, '')
+                      const numValue = value === "" ? 0 : parseInt(value) || 0
+                      setProductForm(prev => ({ ...prev, current_stock: numValue }))
+                    }}
+                    placeholder="0"
+                    className={formErrors.current_stock ? "border-red-500" : ""}
+                  />
+                  {formErrors.current_stock && <p className="text-sm text-red-500 mt-1">{formErrors.current_stock}</p>}
+                </div>
+                <div>
+                  <Label htmlFor="min_stock">Stock Mínimo</Label>
+                  <Input
+                    id="min_stock"
+                    type="text"
+                    value={productForm.min_stock || ""}
+                    onChange={(e) => {
+                      const value = e.target.value.replace(/[^0-9]/g, '')
+                      const numValue = value === "" ? 0 : parseInt(value) || 0
+                      setProductForm(prev => ({ ...prev, min_stock: numValue }))
+                    }}
+                    placeholder="0"
+                    className={formErrors.min_stock ? "border-red-500" : ""}
+                  />
+                  {formErrors.min_stock && <p className="text-sm text-red-500 mt-1">{formErrors.min_stock}</p>}
+                </div>
+                <div>
+                  <Label htmlFor="max_stock">Stock Máximo</Label>
+                  <Input
+                    id="max_stock"
+                    type="text"
+                    value={productForm.max_stock || ""}
+                    onChange={(e) => {
+                      const value = e.target.value.replace(/[^0-9]/g, '')
+                      const numValue = value === "" ? 0 : parseInt(value) || 0
+                      setProductForm(prev => ({ ...prev, max_stock: numValue }))
+                    }}
+                    placeholder="Opcional"
+                    className={formErrors.max_stock ? "border-red-500" : ""}
+                  />
+                  {formErrors.max_stock && <p className="text-sm text-red-500 mt-1">{formErrors.max_stock}</p>}
+                </div>
+              </div>
             </div>
           </div>
-          <div className="flex justify-end space-x-2 mt-6">
-            <Button variant="outline" onClick={() => setShowProductDialog(false)}>
+          
+          <div className="flex justify-end space-x-2 mt-6 pt-4 border-t">
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setShowProductDialog(false)
+                resetProductForm()
+                setEditingProduct(null)
+              }}
+              disabled={isSaving}
+            >
               Cancelar
             </Button>
-            <Button onClick={handleSaveProduct}>
-              {editingProduct ? "Actualizar" : "Crear"}
+            <Button 
+              onClick={handleSaveProduct}
+              disabled={isSaving}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {isSaving ? "Guardando..." : editingProduct ? "Actualizar" : "Crear"}
             </Button>
           </div>
         </DialogContent>

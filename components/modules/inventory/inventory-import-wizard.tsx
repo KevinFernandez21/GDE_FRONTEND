@@ -39,6 +39,8 @@ interface ValidationResult {
   column_validation: {
     valid: boolean
     file_columns: string[]
+    original_columns?: string[]
+    applied_mappings?: Record<string, string>
     required_columns: string[]
     optional_columns: string[]
     missing_required: string[]
@@ -65,19 +67,18 @@ interface ValidationResult {
     total_skus: number
   }
   preview_data: any[]
-  statistics: {
-    completeness: number
-    quality_score: number
-  }
   recommendations: Recommendation[]
   schema: SchemaDefinition
 }
 
 interface ColumnMapping {
   column_name: string
+  original_name?: string
   status: "required" | "optional" | "unknown" | "missing"
   message: string
   can_remove: boolean
+  definition?: any
+  suggested_aliases?: string[]
 }
 
 interface ValidationError {
@@ -453,11 +454,17 @@ export default function InventoryImportWizard({ isOpen, onClose, onImportComplet
                   <AlertDescription className="space-y-2">
                     <p>El archivo debe contener las siguientes columnas requeridas:</p>
                     <ul className="list-disc list-inside text-sm space-y-1">
-                      <li><strong>sku</strong>: Código único del producto</li>
-                      <li><strong>name</strong>: Nombre del producto</li>
+                      <li><strong>sku</strong>: Código único del producto (también acepta: code, código, codigo, item_code, etc.)</li>
+                      <li><strong>name</strong>: Nombre del producto (también acepta: nombre, producto, description, etc.)</li>
+                      <li><strong>cost_price</strong>: Precio de costo (también acepta: precio_costo, costo, cost, purchase_price, etc.)</li>
+                      <li><strong>current_stock</strong>: Stock actual (también acepta: stock, inventario, cantidad, qty, quantity, etc.)</li>
                     </ul>
                     <p className="text-xs text-muted-foreground mt-2">
-                      Columnas opcionales: description, category, brand, unit, cost_price, sale_price, current_stock, min_stock, max_stock, location, barcode
+                      <strong>Nota:</strong> El sistema mapea automáticamente variaciones comunes de nombres de columnas. 
+                      No necesitas renombrar tus columnas si usan nombres estándar del mercado.
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Columnas opcionales: description, category, brand, unit, sale_price, min_stock, max_stock, location, barcode
                     </p>
                   </AlertDescription>
                 </Alert>
@@ -525,6 +532,33 @@ export default function InventoryImportWizard({ isOpen, onClose, onImportComplet
                 </CardContent>
               </Card>
 
+              {/* Column Mappings Applied */}
+              {validationResult.column_validation?.applied_mappings && 
+               Object.keys(validationResult.column_validation.applied_mappings).length > 0 && (
+                <Card className="border-blue-200 bg-blue-50/50">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-sm">
+                      <Info className="h-4 w-4 text-blue-600" />
+                      Mapeo Inteligente de Columnas
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      El sistema ha mapeado automáticamente tus columnas a los nombres estándar
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {Object.entries(validationResult.column_validation.applied_mappings).map(([original, mapped]) => (
+                        <div key={original} className="flex items-center gap-2 text-sm">
+                          <span className="font-medium text-muted-foreground">{original}</span>
+                          <ArrowRight className="h-3 w-3 text-blue-600" />
+                          <span className="font-semibold text-blue-700">{mapped}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Recommendations */}
               {validationResult.recommendations?.length > 0 && (
                 <Card>
@@ -552,7 +586,7 @@ export default function InventoryImportWizard({ isOpen, onClose, onImportComplet
               <Card>
                 <CardContent className="p-4 sm:p-6">
                   <Tabs defaultValue="columns" className="w-full">
-                    <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 h-auto">
+                    <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 h-auto">
                       <TabsTrigger value="columns" className="text-xs sm:text-sm py-2">
                         <span className="hidden sm:inline">Columnas</span>
                         <span className="sm:hidden">Col</span>
@@ -570,10 +604,6 @@ export default function InventoryImportWizard({ isOpen, onClose, onImportComplet
                       <TabsTrigger value="preview" className="text-xs sm:text-sm py-2">
                         <span className="hidden sm:inline">Vista Previa</span>
                         <span className="sm:hidden">Prev</span>
-                      </TabsTrigger>
-                      <TabsTrigger value="stats" className="text-xs sm:text-sm py-2">
-                        <span className="hidden sm:inline">Estadísticas</span>
-                        <span className="sm:hidden">Est</span>
                       </TabsTrigger>
                     </TabsList>
 
@@ -600,9 +630,25 @@ export default function InventoryImportWizard({ isOpen, onClose, onImportComplet
                                     {col.status === "unknown" && <AlertTriangle className="h-4 w-4 text-yellow-500" />}
                                     {col.status === "missing" && <XCircle className="h-4 w-4 text-destructive" />}
                                   </TableCell>
-                                  <TableCell className="font-medium">{col.column_name}</TableCell>
+                                  <TableCell className="font-medium">
+                                    <div>
+                                      <div>{col.column_name}</div>
+                                      {col.original_name && col.original_name !== col.column_name && (
+                                        <div className="text-xs text-muted-foreground mt-0.5">
+                                          Mapeado desde: <span className="italic">{col.original_name}</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </TableCell>
                                   <TableCell>{getStatusBadge(col.status)}</TableCell>
-                                  <TableCell className="text-sm">{col.message}</TableCell>
+                                  <TableCell className="text-sm">
+                                    <div>{col.message}</div>
+                                    {col.status === "missing" && col.suggested_aliases && col.suggested_aliases.length > 0 && (
+                                      <div className="text-xs text-muted-foreground mt-1">
+                                        Sugerencias: {col.suggested_aliases.slice(0, 3).join(", ")}
+                                      </div>
+                                    )}
+                                  </TableCell>
                                   <TableCell className="text-right">
                                     {col.can_remove && (
                                       <Button
@@ -688,39 +734,6 @@ export default function InventoryImportWizard({ isOpen, onClose, onImportComplet
                       </ScrollArea>
                     </TabsContent>
 
-                    {/* Statistics Tab */}
-                    <TabsContent value="stats" className="space-y-4">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <Card>
-                          <CardHeader>
-                            <CardTitle className="text-sm">Completitud de Datos</CardTitle>
-                          </CardHeader>
-                          <CardContent>
-                            <div className="space-y-2">
-                              <div className="flex justify-between text-sm">
-                                <span>Completitud</span>
-                                <span>{validationResult.statistics?.completeness || 0}%</span>
-                              </div>
-                              <Progress value={validationResult.statistics?.completeness || 0} />
-                            </div>
-                          </CardContent>
-                        </Card>
-                        <Card>
-                          <CardHeader>
-                            <CardTitle className="text-sm">Calidad de Datos</CardTitle>
-                          </CardHeader>
-                          <CardContent>
-                            <div className="space-y-2">
-                              <div className="flex justify-between text-sm">
-                                <span>Puntuación</span>
-                                <span>{validationResult.statistics?.quality_score || 0}/100</span>
-                              </div>
-                              <Progress value={validationResult.statistics?.quality_score || 0} />
-                            </div>
-                          </CardContent>
-                        </Card>
-                      </div>
-                    </TabsContent>
                   </Tabs>
                 </CardContent>
               </Card>
