@@ -18,11 +18,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Upload, CheckCircle, XCircle, Info, AlertTriangle, FileText, Eye } from "lucide-react"
 
 interface BulkGuideImportModalProps {
   isOpen: boolean
   onClose: () => void
+  onImportSuccess?: () => void
 }
 
 interface PreviewData {
@@ -35,7 +37,7 @@ interface ColumnMapping {
   status: "match" | "missing" | "extra" | "unmapped"
 }
 
-export default function BulkGuideImportModal({ isOpen, onClose }: BulkGuideImportModalProps) {
+export default function BulkGuideImportModal({ isOpen, onClose, onImportSuccess }: BulkGuideImportModalProps) {
   const [fileName, setFileName] = useState<string | null>(null)
   const [detectedColumns, setDetectedColumns] = useState<string[]>([])
   const [previewData, setPreviewData] = useState<PreviewData[]>([])
@@ -44,19 +46,17 @@ export default function BulkGuideImportModal({ isOpen, onClose }: BulkGuideImpor
   const [columnMappings, setColumnMappings] = useState<ColumnMapping[]>([])
   const [activeTab, setActiveTab] = useState("upload")
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
+  const [validationData, setValidationData] = useState<any>(null)
 
   // Columnas recomendadas para guías de despacho
+  // Según los requisitos: codigo, fecha, cliente, usuario, productos, dropshipper
   const recommendedColumns = [
-    { key: "codigo", label: "Código Guía", required: true },
-    { key: "fecha", label: "Fecha", required: true },
-    { key: "cliente", label: "Cliente", required: true },
-    { key: "direccion", label: "Dirección Entrega", required: false },
-    { key: "telefono", label: "Teléfono", required: false },
-    { key: "productos", label: "Cantidad Productos", required: true },
-    { key: "estado", label: "Estado", required: false },
-    { key: "usuario", label: "Usuario Responsable", required: false },
-    { key: "observaciones", label: "Observaciones", required: false },
-    { key: "transporte", label: "Método Transporte", required: false },
+    { key: "codigo", label: "Número de guía", required: true },
+    { key: "fecha", label: "Fecha de la guía", required: true },
+    { key: "cliente", label: "Nombre del cliente", required: true },
+    { key: "usuario", label: "Usuario responsable", required: false },
+    { key: "productos", label: "Cantidad de productos", required: true },
+    { key: "dropshipper", label: "Dropshipper", required: false },
   ]
 
   // Simulación de datos CSV para guías de despacho
@@ -198,6 +198,16 @@ export default function BulkGuideImportModal({ isOpen, onClose }: BulkGuideImpor
         const validationData = result.data
         console.log("✅ [BulkGuideImportModal] Validation data:", validationData)
         
+        // Get column validation info
+        const columnValidation = validationData?.column_validation || {}
+        const mappedColumns = columnValidation.mapped_columns || []
+        const unmappedColumns = columnValidation.unmapped_columns || []
+        const columnMapping = columnValidation.column_mapping || {}
+        
+        console.log("📊 [BulkGuideImportModal] Column analysis:")
+        console.log("   - Mapped (useful):", mappedColumns)
+        console.log("   - Unmapped (junk):", unmappedColumns)
+        
         // Additional check: if data is not valid for import, show error
         if (!validationData?.valid_for_import) {
           const errorMsg = validationData?.error || "El archivo contiene errores de validación"
@@ -217,23 +227,40 @@ export default function BulkGuideImportModal({ isOpen, onClose }: BulkGuideImpor
         setDetectedColumns(columns)
         setPreviewData(validationData.preview_data || [])
 
-        // Crear mapeos automáticos
+        // Crear mapeos automáticos usando la información del backend
         const mappings: ColumnMapping[] = columns.map((col) => {
-          const normalizedCol = col.toLowerCase().replace(/[^a-z0-9]/g, "")
-          const recommendedCol = recommendedColumns.find((rec) => {
-            const normalizedRec = rec.key.toLowerCase().replace(/[^a-z0-9]/g, "")
-            return normalizedCol.includes(normalizedRec) || normalizedRec.includes(normalizedCol)
-          })
+          const mapping = columnMapping[col]
+          let mapped = ""
+          let status: "match" | "extra" | "unmapped" = "unmapped"
+          
+          if (mapping) {
+            if (mapping.mapped_to) {
+              mapped = mapping.mapped_to
+              status = "match"
+            } else if (mapping.is_junk) {
+              status = "unmapped"
+            }
+          } else {
+            // Fallback a lógica anterior si no hay mapping del backend
+            const normalizedCol = col.toLowerCase().replace(/[^a-z0-9]/g, "")
+            const recommendedCol = recommendedColumns.find((rec) => {
+              const normalizedRec = rec.key.toLowerCase().replace(/[^a-z0-9]/g, "")
+              return normalizedCol.includes(normalizedRec) || normalizedRec.includes(normalizedCol)
+            })
+            mapped = recommendedCol?.key || ""
+            status = recommendedCol ? "match" : "unmapped"
+          }
 
           return {
             detected: col,
-            mapped: recommendedCol?.key || "",
-            status: recommendedCol ? "match" : "extra",
+            mapped: mapped,
+            status: status,
           }
         })
 
         console.log("🗺️ [BulkGuideImportModal] Column mappings:", mappings)
         setColumnMappings(mappings)
+        setValidationData(validationData) // Store validation data for display
         setIsProcessing(false)
         console.log("✅ [BulkGuideImportModal] Validation successful! Changing tab to preview...")
         console.log("📊 [BulkGuideImportModal] Preview data length:", validationData.preview_data?.length)
@@ -320,6 +347,9 @@ export default function BulkGuideImportModal({ isOpen, onClose }: BulkGuideImpor
 
       // Show success message
       alert(result.message || `Importación exitosa: ${previewData.length} guías procesadas.`)
+      if (onImportSuccess) {
+        onImportSuccess()
+      }
       onClose()
       setIsProcessing(false)
     } catch (error) {
@@ -428,6 +458,59 @@ export default function BulkGuideImportModal({ isOpen, onClose }: BulkGuideImpor
 
           <TabsContent value="preview" className="space-y-4">
             <div className="space-y-4">
+              {/* Column Analysis */}
+              {validationData?.column_validation && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Análisis de Columnas</CardTitle>
+                    <CardDescription>
+                      Columnas encontradas en el archivo y su mapeo
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {/* Useful Columns */}
+                    {validationData.column_validation.mapped_columns?.length > 0 && (
+                      <div>
+                        <h5 className="text-sm font-semibold text-green-700 mb-2 flex items-center gap-2">
+                          <CheckCircle className="w-4 h-4" />
+                          Columnas Útiles ({validationData.column_validation.mapped_columns.length})
+                        </h5>
+                        <div className="flex flex-wrap gap-2">
+                          {validationData.column_validation.mapped_columns.map((col: string) => {
+                            const mapping = validationData.column_validation.column_mapping?.[col]
+                            return (
+                              <Badge key={col} variant="default" className="text-xs">
+                                {col} → {mapping?.mapped_to || col}
+                              </Badge>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Junk Columns */}
+                    {validationData.column_validation.unmapped_columns?.length > 0 && (
+                      <div>
+                        <h5 className="text-sm font-semibold text-red-700 mb-2 flex items-center gap-2">
+                          <XCircle className="w-4 h-4" />
+                          Columnas Basura ({validationData.column_validation.unmapped_columns.length}) - Se Ignorarán
+                        </h5>
+                        <div className="flex flex-wrap gap-2">
+                          {validationData.column_validation.unmapped_columns.map((col: string) => (
+                            <Badge key={col} variant="destructive" className="text-xs">
+                              {col}
+                            </Badge>
+                          ))}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Estas columnas no se importarán ya que no corresponden a ningún campo del sistema.
+                        </p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
               <div className="flex items-center justify-between">
                 <h4 className="font-semibold">Previsualización de Guías</h4>
                 <Badge variant="secondary">{previewData.length} registros</Badge>

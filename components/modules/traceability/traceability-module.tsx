@@ -931,15 +931,14 @@ export default function TraceabilityModule() {
                         <TableHead>Fecha</TableHead>
                         <TableHead>Cliente</TableHead>
                         <TableHead>Productos</TableHead>
-                        <TableHead>Estado</TableHead>
-                        <TableHead>Usuario Responsable</TableHead>
+                        <TableHead>Dropshipper</TableHead>
                         <TableHead className="text-right">Acciones</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {guiasDespacho.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={8} className="text-center py-12 px-6">
+                          <TableCell colSpan={7} className="text-center py-12 px-6">
                             <div className="flex flex-col items-center space-y-2">
                               <Package className="w-8 h-8 text-gray-400" />
                               <p className="text-gray-500">No se encontraron guías</p>
@@ -960,12 +959,7 @@ export default function TraceabilityModule() {
                             <TableCell>{guia.fecha ? new Date(guia.fecha).toLocaleDateString() : "-"}</TableCell>
                             <TableCell>{guia.cliente || "-"}</TableCell>
                             <TableCell>{guia.productos || 0}</TableCell>
-                            <TableCell>
-                              <Badge variant={guia.estado === "entregado" ? "default" : "secondary"}>
-                                {guia.estado || "-"}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>{guia.usuario || "-"}</TableCell>
+                            <TableCell>{guia.dropshipper || "-"}</TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-2">
                                 <Button 
@@ -1050,9 +1044,9 @@ export default function TraceabilityModule() {
         </TabsContent>
 
 
-        {/* TAB: ESCANEO DE GUÍAS (Comparación de Archivos) */}
+        {/* TAB: ESCANEO DE GUÍAS (Comparación e Importación) */}
         <TabsContent value="scanning" className="space-y-4">
-          <GuideComparisonUpload />
+          <GuideComparisonUpload onOpenImport={() => setShowGuideImportModal(true)} />
         </TabsContent>
       </Tabs>
 
