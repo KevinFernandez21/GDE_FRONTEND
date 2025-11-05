@@ -26,8 +26,11 @@ Modern web frontend for the GDE inventory and accounting management system. Buil
 - **Styling**: Tailwind CSS + Shadcn/ui components
 - **State Management**: React Context + Custom hooks
 - **HTTP Client**: Fetch API with custom service layer
-- **Authentication**: JWT tokens with secure storage
+- **Authentication**: JWT tokens with secure storage (backend API)
+- **Firebase**: Firebase SDK para integraciones futuras (Auth, Firestore, Storage)
 - **Deployment**: Vercel
+
+> **Base de datos:** El frontend se conecta al backend FastAPI que usa Firebase Firestore
 
 ## 📁 Project Structure
 
@@ -49,7 +52,8 @@ GDE-FRONTEND/
 ├── hooks/                        # Custom React hooks
 ├── lib/                          # Utilities and configurations
 │   ├── api.ts                    # API service layer
-│   ├── auth.ts                   # Authentication utilities
+│   ├── firebase.ts               # Firebase configuration
+│   ├── config.ts                 # App configuration
 │   └── utils.ts                  # General utilities
 ├── public/                       # Static assets
 └── styles/                       # Global styles
@@ -69,18 +73,22 @@ pnpm install
 
 ### 2. Environment Setup
 
-Copy the environment example file:
-
-```bash
-cp .env.example .env.local
-```
-
-Configure your environment variables:
+Crea un archivo `.env.local` en la raíz del proyecto:
 
 ```env
-NEXT_PUBLIC_API_URL=http://localhost:8000
-NEXT_PUBLIC_APP_NAME="GDE - Sistema de Gestión"
+# Firebase Configuration (REQUIRED)
+NEXT_PUBLIC_FIREBASE_API_KEY=AIzaSyAlKx-G4ZpPIqIyiEM4S6Ln0FWGPvNW2P4
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=gde-basededatos.firebaseapp.com
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=gde-basededatos
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=gde-basededatos.firebasestorage.app
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=317787063647
+NEXT_PUBLIC_FIREBASE_APP_ID=1:317787063647:web:ec794b67be859b82d422ea
+
+# API Configuration
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1
 ```
+
+> **Nota:** Ver `FRONTEND_FIREBASE_SETUP.md` para más detalles sobre la configuración de Firebase.
 
 ### 3. Run Development Server
 
@@ -178,6 +186,7 @@ npm run test:watch
 
 ## 📖 Documentation
 
+- [Frontend Firebase Setup](./FRONTEND_FIREBASE_SETUP.md) - Configuración de Firebase
 - [Backend API Documentation](./BACKEND_API_DOCS.md)
 - [Component Documentation](./docs/components.md)
 - [Deployment Guide](./docs/deployment.md)

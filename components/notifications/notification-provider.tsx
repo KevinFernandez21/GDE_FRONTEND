@@ -151,12 +151,13 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
         }
       ]
 
-      // Randomly trigger a notification (10% chance every 30 seconds)
-      if (Math.random() < 0.1) {
+      // OPTIMIZED: Reduced frequency to save API calls
+      // Randomly trigger a notification (5% chance every 2 minutes)
+      if (Math.random() < 0.05) {
         const randomNotification = notificationTypes[Math.floor(Math.random() * notificationTypes.length)]
         addNotification(randomNotification)
       }
-    }, 30000) // Check every 30 seconds
+    }, 120000) // OPTIMIZED: Check every 2 minutes instead of 30 seconds
 
     // Add initial notifications
     setTimeout(() => {
@@ -171,26 +172,87 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
     return () => clearInterval(interval)
   }, [])
 
-  // Simulate stock alerts
+  // Fetch real stock alerts from backend
   useEffect(() => {
-    const stockAlertInterval = setInterval(() => {
-      if (Math.random() < 0.15) {
-        const products = ['Mouse Logitech MX', 'Monitor Samsung 24"', 'Teclado Mecánico', 'Webcam HD']
-        const randomProduct = products[Math.floor(Math.random() * products.length)]
-        const stockLevel = Math.floor(Math.random() * 10) + 1
-        
-        addNotification({
-          type: 'warning',
-          title: 'Alerta de Stock',
-          message: `${randomProduct} tiene solo ${stockLevel} unidades disponibles.`,
-          priority: stockLevel <= 3 ? 'high' : 'medium',
-          data: { product: randomProduct, stock: stockLevel }
-        })
-      }
-    }, 45000) // Check every 45 seconds
+    let isMounted = true
+    const processedAlertIds = new Set<string>()
 
-    return () => clearInterval(stockAlertInterval)
-  }, [])
+    const fetchStockAlerts = async () => {
+      try {
+        const { apiClient } = await import('@/lib/api')
+        const response = await apiClient.request('/inventory/alerts', {
+          method: 'GET'
+        })
+
+        if (!isMounted) return
+
+        if (response.data && Array.isArray(response.data)) {
+          // Add new alerts (only if we haven't processed them before in this session)
+          response.data.forEach((alert: any) => {
+            const productId = alert.product?.id || alert.product_id
+            if (productId && !processedAlertIds.has(productId)) {
+              processedAlertIds.add(productId)
+              
+              const productName = alert.product?.name || 'Producto'
+              const currentStock = alert.current_stock || 0
+              const minStock = alert.min_stock || 0
+              const alertLevel = alert.alert_level || alert.alert_type
+
+              let title = 'Alerta de Stock'
+              let message = ''
+              let priority: 'low' | 'medium' | 'high' = 'medium'
+
+              if (currentStock === 0) {
+                title = 'Producto Agotado'
+                message = `${productName} está agotado. Reponer inmediatamente.`
+                priority = 'high'
+              } else if (alertLevel === 'critico') {
+                title = 'Stock Crítico'
+                message = `${productName} tiene solo ${currentStock} unidades (mínimo: ${minStock}). Reponer urgente.`
+                priority = 'high'
+              } else {
+                title = 'Stock Bajo'
+                message = `${productName} tiene ${currentStock} unidades disponibles (mínimo: ${minStock}). Considerar reposición.`
+                priority = currentStock <= minStock * 0.7 ? 'high' : 'medium'
+              }
+
+              addNotification({
+                type: 'inventory',
+                title,
+                message,
+                priority,
+                data: {
+                  productId,
+                  productName,
+                  currentStock,
+                  minStock,
+                  alertLevel,
+                  alertType: alert.alert_type,
+                  daysOfSupply: alert.days_of_supply
+                }
+              })
+            }
+          })
+        }
+      } catch (error) {
+        console.error('Error fetching stock alerts:', error)
+        // Don't show error to user, just log it
+      }
+    }
+
+    // Fetch alerts immediately
+    fetchStockAlerts()
+
+    // Then fetch every 5 minutes
+    const stockAlertInterval = setInterval(() => {
+      fetchStockAlerts()
+    }, 300000) // 5 minutes
+
+    return () => {
+      isMounted = false
+      clearInterval(stockAlertInterval)
+    }
+  }, [addNotification])
 
   const value: NotificationContextType = {
     notifications,

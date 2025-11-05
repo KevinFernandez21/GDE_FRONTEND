@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useState, type ReactNode } from "react"
+import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
 
 interface AppContextType {
   activeModule: string
@@ -13,7 +13,27 @@ const AppContext = createContext<AppContextType | undefined>(undefined)
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [activeModule, setActiveModule] = useState("dashboard")
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  // Initialize based on screen size - default to collapsed on mobile, open on desktop
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth < 1024
+    }
+    return false // Default to open on SSR
+  })
+  
+  // Handle resize events to auto-collapse on mobile
+  useEffect(() => {
+    const handleResize = () => {
+      // Only auto-adjust on mobile, let user control on desktop
+      if (window.innerWidth < 1024 && !sidebarCollapsed) {
+        // Auto-collapse when switching to mobile
+        setSidebarCollapsed(true)
+      }
+    }
+    
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [sidebarCollapsed])
 
   return (
     <AppContext.Provider

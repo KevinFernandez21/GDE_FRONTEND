@@ -17,7 +17,16 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # env files
-.env*
+.env
+.env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Firebase service account keys (sensitive)
+*firebase-adminsdk*.json
+*-firebase-adminsdk-*.json
 
 # vercel
 .vercel

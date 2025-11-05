@@ -72,11 +72,23 @@ class ApiClient {
       console.log(`[ApiClient] Token added to headers`);
     }
 
+    // Create abort controller with timeout
+    const abortController = new AbortController()
+    let timeoutId: ReturnType<typeof setTimeout> | null = null
+    
     try {
+      timeoutId = setTimeout(() => abortController.abort(), 30000) // 30 second timeout
+      
       const response = await fetch(url, {
         ...options,
         headers,
+        signal: abortController.signal
       });
+      
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+        timeoutId = null
+      }
 
       console.log(`[ApiClient] Response status: ${response.status}`);
       const data = await response.json();
@@ -84,7 +96,30 @@ class ApiClient {
 
       if (!response.ok) {
         // Handle FastAPI error response
-        const errorMessage = data.detail || data.message || 'An error occurred';
+        let errorMessage = 'An error occurred';
+        
+        if (data.detail) {
+          // Handle array of validation errors (422 Unprocessable Entity)
+          if (Array.isArray(data.detail)) {
+            errorMessage = data.detail
+              .map((err: any) => {
+                if (typeof err === 'string') return err;
+                if (err.msg) {
+                  const loc = err.loc ? err.loc.join('.') : '';
+                  return `${loc ? `${loc}: ` : ''}${err.msg}`;
+                }
+                return JSON.stringify(err);
+              })
+              .join(', ');
+          } else if (typeof data.detail === 'string') {
+            errorMessage = data.detail;
+          } else {
+            errorMessage = JSON.stringify(data.detail);
+          }
+        } else if (data.message) {
+          errorMessage = data.message;
+        }
+        
         console.log(`[ApiClient] Error response:`, errorMessage);
         return {
           error: errorMessage,
@@ -105,9 +140,31 @@ class ApiClient {
         return { data };
       }
 
+      // Handle PaginatedResponse format (has items, total, page, size, pages)
+      if (data.items !== undefined && data.total !== undefined) {
+        return { data };
+      }
+
       // For other direct responses
       return { data };
-    } catch (error) {
+    } catch (error: any) {
+      // Clear timeout if still running
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+        timeoutId = null
+      }
+      
+      if (error.name === 'AbortError') {
+        console.warn(`[ApiClient] Request timeout for ${endpoint}`);
+        return {
+          error: 'Request timeout. Please try again.',
+        };
+      } else if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
+        console.warn(`[ApiClient] Network error for ${endpoint} - backend may be unavailable`);
+        return {
+          error: 'Network error. Please check your connection and try again.',
+        };
+      }
       return {
         error: error instanceof Error ? error.message : 'Network error',
       };

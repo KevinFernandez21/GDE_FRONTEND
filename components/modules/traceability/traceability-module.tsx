@@ -205,28 +205,54 @@ export default function TraceabilityModule() {
       }
 
       const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1'
-      const response = await fetch(`${API_BASE_URL}/delivery-guides/?${params.toString()}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      })
+      const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL
+      
+      // Create abort controller with timeout
+      const abortController = new AbortController()
+      const timeoutId = setTimeout(() => abortController.abort(), 15000) // 15 second timeout
+      
+      try {
+        const response = await fetch(`${baseUrl}/delivery-guides/?${params.toString()}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          signal: abortController.signal
+        })
+        
+        clearTimeout(timeoutId)
 
-      if (response.ok) {
-        const result = await response.json()
-        setGuiasDespacho(result.items || [])
-        setTotalGuides(result.total || 0)
-        // Update currentPageGuides to match the page we requested
-        setCurrentPageGuides(result.page || page)
-      } else {
-        const errorData = await response.json()
-        toast.error(errorData.detail || 'Error al cargar guías de despacho')
-        setGuiasDespacho([])
-        setTotalGuides(0)
+        if (response.ok) {
+          const result = await response.json()
+          setGuiasDespacho(result.items || [])
+          setTotalGuides(result.total || 0)
+          // Update currentPageGuides to match the page we requested
+          setCurrentPageGuides(result.page || page)
+        } else {
+          try {
+            const errorData = await response.json()
+            toast.error(errorData.detail || 'Error al cargar guías de despacho')
+          } catch {
+            toast.error(`Error ${response.status}: ${response.statusText}`)
+          }
+          setGuiasDespacho([])
+          setTotalGuides(0)
+        }
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId)
+        throw fetchError
       }
-    } catch (error) {
-      console.error('Error fetching delivery guides:', error)
-      toast.error('Error de conexión con el servidor')
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        console.warn('Request timeout fetching delivery guides')
+        toast.error('Tiempo de espera agotado. Intenta nuevamente.')
+      } else if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
+        console.warn('Network error fetching delivery guides - backend may be unavailable')
+        toast.error('Error de conexión con el servidor')
+      } else {
+        console.error('Error fetching delivery guides:', error)
+        toast.error('Error al cargar guías de despacho')
+      }
       setGuiasDespacho([])
       setTotalGuides(0)
     } finally {
@@ -238,91 +264,139 @@ export default function TraceabilityModule() {
     try {
       const token = localStorage.getItem('gde_token')
       if (!token) {
-        toast.error('No se encontró token de autenticación')
+        console.warn('No token found for fetchKardexData')
         return
       }
 
       const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1'
-      const response = await fetch(`${API_BASE_URL}/kardex/?page=1&size=50`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      })
+      const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL
+      
+      // Create abort controller with timeout
+      const abortController = new AbortController()
+      const timeoutId = setTimeout(() => abortController.abort(), 15000) // 15 second timeout
+      
+      try {
+        const response = await fetch(`${baseUrl}/kardex/?page=1&size=50`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          signal: abortController.signal
+        })
+        
+        clearTimeout(timeoutId)
 
-      if (response.ok) {
-        const result = await response.json()
-        setKardexData(result.items || [])
-      } else {
-        const errorData = await response.json()
-        toast.error(errorData.detail || 'Error al cargar datos de kardex')
+        if (response.ok) {
+          const result = await response.json()
+          setKardexData(result.items || [])
+        } else {
+          try {
+            const errorData = await response.json()
+            console.warn('Error fetching kardex:', errorData.detail || response.statusText)
+          } catch {
+            console.warn(`Error ${response.status} fetching kardex`)
+          }
+        }
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId)
+        throw fetchError
       }
-    } catch (error) {
-      console.error('Error fetching kardex data:', error)
-      toast.error('Error de conexión con el servidor')
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        console.warn('Request timeout fetching kardex data')
+      } else if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
+        console.warn('Network error fetching kardex data - backend may be unavailable')
+      } else {
+        console.error('Error fetching kardex data:', error)
+      }
+      // Don't show toast for background fetches
     }
   }
 
   const fetchGuideMasterData = async () => {
     try {
       const token = localStorage.getItem('gde_token')
-      if (!token) return
+      if (!token) {
+        console.warn('No token found, skipping fetchGuideMasterData')
+        return
+      }
+
+      // Get API base URL - ensure it's properly formatted
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1'
+      const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL
+
+      // Helper function to safely fetch with error handling
+      const safeFetch = async (endpoint: string, errorLabel: string) => {
+        const abortController = new AbortController()
+        const timeoutId = setTimeout(() => abortController.abort(), 10000) // 10 second timeout
+        
+        try {
+          const url = `${baseUrl}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`
+          
+          const response = await fetch(url, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            signal: abortController.signal
+          })
+          
+          // Clear timeout if request completed successfully
+          clearTimeout(timeoutId)
+
+          if (response.ok) {
+            const result = await response.json()
+            return result
+          } else {
+            console.warn(`Failed to fetch ${errorLabel}:`, response.status, response.statusText)
+            return null
+          }
+        } catch (error: any) {
+          // Clear timeout on error
+          clearTimeout(timeoutId)
+          
+          // Don't log network errors in console.error to avoid spam
+          if (error.name === 'AbortError') {
+            console.warn(`Request timeout for ${errorLabel}`)
+          } else if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
+            // Network error - backend might be down
+            console.warn(`Network error fetching ${errorLabel} - backend may be unavailable`)
+          } else {
+            console.warn(`Error fetching ${errorLabel}:`, error.message)
+          }
+          return null
+        }
+      }
 
       // Fetch tracking summary
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1'
-      const summaryResponse = await fetch(`${API_BASE_URL}/guide-master/tracking-summary`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      })
-
-      if (summaryResponse.ok) {
-        const summaryResult = await summaryResponse.json()
+      const summaryResult = await safeFetch('/guide-master/tracking-summary', 'tracking summary')
+      if (summaryResult?.data) {
         setTrackingSummary(summaryResult.data)
       }
 
       // Fetch import batches
-      const batchesResponse = await fetch(`${API_BASE_URL}/guide-master/batches?limit=10`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      })
-
-      if (batchesResponse.ok) {
-        const batchesResult = await batchesResponse.json()
+      const batchesResult = await safeFetch('/guide-master/batches?limit=10', 'import batches')
+      if (batchesResult?.data) {
         setImportBatches(batchesResult.data || [])
       }
 
       // Fetch pending guides
-      const pendingResponse = await fetch(`${API_BASE_URL}/guide-master/pending-guides?limit=50`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      })
-
-      if (pendingResponse.ok) {
-        const pendingResult = await pendingResponse.json()
+      const pendingResult = await safeFetch('/guide-master/pending-guides?limit=50', 'pending guides')
+      if (pendingResult?.data) {
         setPendingGuides(pendingResult.data || [])
       }
 
       // Fetch unknown guides
-      const unknownResponse = await fetch(`${API_BASE_URL}/guide-master/unknown-guides?limit=20`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      })
-
-      if (unknownResponse.ok) {
-        const unknownResult = await unknownResponse.json()
+      const unknownResult = await safeFetch('/guide-master/unknown-guides?limit=20', 'unknown guides')
+      if (unknownResult?.data) {
         setUnknownGuides(unknownResult.data || [])
       }
 
-    } catch (error) {
-      console.error('Error fetching guide master data:', error)
+    } catch (error: any) {
+      // Only log unexpected errors
+      if (error.name !== 'TypeError' || error.message !== 'Failed to fetch') {
+        console.error('Unexpected error in fetchGuideMasterData:', error)
+      }
     }
   }
 
@@ -333,10 +407,10 @@ export default function TraceabilityModule() {
     fetchKardexData()
     fetchGuideMasterData()
 
-    // Auto-refresh tracking summary every 30 seconds
+    // OPTIMIZED: Auto-refresh tracking summary every 2 minutes (reduced from 30s to save quota)
     const interval = setInterval(() => {
       fetchGuideMasterData()
-    }, 30000)
+    }, 120000) // 2 minutes instead of 30 seconds
 
     return () => clearInterval(interval)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -465,26 +539,49 @@ export default function TraceabilityModule() {
       }
 
       const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1'
-      const response = await fetch(`${API_BASE_URL}/delivery-guides/`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(guideData)
-      })
+      const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL
+      
+      const abortController = new AbortController()
+      const timeoutId = setTimeout(() => abortController.abort(), 15000)
+      
+      try {
+        const response = await fetch(`${baseUrl}/delivery-guides/`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(guideData),
+          signal: abortController.signal
+        })
+        
+        clearTimeout(timeoutId)
 
-      if (response.ok) {
-        toast.success('Guía de despacho creada exitosamente')
-        fetchGuiasDespacho()
-        setShowGuideModal(false)
-      } else {
-        const errorData = await response.json()
-        toast.error(errorData.detail || 'Error al crear guía de despacho')
+        if (response.ok) {
+          toast.success('Guía de despacho creada exitosamente')
+          fetchGuiasDespacho(currentPageGuides, searchGuides)
+          setShowGuideModal(false)
+        } else {
+          try {
+            const errorData = await response.json()
+            toast.error(errorData.detail || 'Error al crear guía de despacho')
+          } catch {
+            toast.error(`Error ${response.status}: ${response.statusText}`)
+          }
+        }
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId)
+        throw fetchError
       }
-    } catch (error) {
-      console.error('Error creating guide:', error)
-      toast.error('Error de conexión con el servidor')
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        toast.error('Tiempo de espera agotado. Intenta nuevamente.')
+      } else if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
+        toast.error('Error de conexión con el servidor')
+      } else {
+        console.error('Error creating guide:', error)
+        toast.error('Error al crear guía de despacho')
+      }
     }
   }
 
@@ -497,26 +594,49 @@ export default function TraceabilityModule() {
       }
 
       const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1'
-      const response = await fetch(`${API_BASE_URL}/kardex/movement`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(kardexMovementData)
-      })
+      const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL
+      
+      const abortController = new AbortController()
+      const timeoutId = setTimeout(() => abortController.abort(), 15000)
+      
+      try {
+        const response = await fetch(`${baseUrl}/kardex/movement`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(kardexMovementData),
+          signal: abortController.signal
+        })
+        
+        clearTimeout(timeoutId)
 
-      if (response.ok) {
-        toast.success('Movimiento de kardex creado exitosamente')
-        fetchKardexData()
-        setShowKardexModal(false)
-      } else {
-        const errorData = await response.json()
-        toast.error(errorData.detail || 'Error al crear movimiento de kardex')
+        if (response.ok) {
+          toast.success('Movimiento de kardex creado exitosamente')
+          fetchKardexData()
+          setShowKardexModal(false)
+        } else {
+          try {
+            const errorData = await response.json()
+            toast.error(errorData.detail || 'Error al crear movimiento de kardex')
+          } catch {
+            toast.error(`Error ${response.status}: ${response.statusText}`)
+          }
+        }
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId)
+        throw fetchError
       }
-    } catch (error) {
-      console.error('Error creating kardex movement:', error)
-      toast.error('Error de conexión con el servidor')
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        toast.error('Tiempo de espera agotado. Intenta nuevamente.')
+      } else if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
+        toast.error('Error de conexión con el servidor')
+      } else {
+        console.error('Error creating kardex movement:', error)
+        toast.error('Error al crear movimiento de kardex')
+      }
     }
   }
 

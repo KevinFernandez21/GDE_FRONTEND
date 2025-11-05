@@ -85,8 +85,8 @@ export default function RealtimeDashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
-  const [autoRefresh, setAutoRefresh] = useState(true)
-  const [refreshInterval, setRefreshInterval] = useState(30) // seconds
+  const [autoRefresh, setAutoRefresh] = useState(false) // OPTIMIZED: Disabled by default to reduce quota usage
+  const [refreshInterval, setRefreshInterval] = useState(120) // OPTIMIZED: 2 minutes instead of 30 seconds
 
   const fetchRealtimeMetrics = async () => {
     try {
@@ -151,6 +151,21 @@ export default function RealtimeDashboard() {
       return () => clearInterval(interval)
     }
   }, [autoRefresh, refreshInterval])
+
+  // Listen for product deletion events to auto-refresh dashboard
+  useEffect(() => {
+    const handleProductsDeleted = () => {
+      // Refresh dashboard when products are deleted (with a small delay to ensure backend is updated)
+      setTimeout(() => {
+        fetchRealtimeMetrics()
+      }, 500) // Small delay to ensure backend has processed the deletion
+    }
+
+    window.addEventListener('productsDeleted', handleProductsDeleted)
+    return () => {
+      window.removeEventListener('productsDeleted', handleProductsDeleted)
+    }
+  }, []) // Empty dependency array - fetchRealtimeMetrics is stable
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('es-CL', {
@@ -228,12 +243,12 @@ export default function RealtimeDashboard() {
     : 0
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-3 sm:p-4 lg:p-6 space-y-4 sm:space-y-6">
       {/* Header with Controls */}
       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Dashboard en Tiempo Real</h2>
-          <p className="text-muted-foreground">
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Dashboard en Tiempo Real</h2>
+          <p className="text-sm sm:text-base text-muted-foreground">
             Monitoreo integral del sistema
             {lastUpdate && (
               <span className="ml-2 text-xs">
@@ -251,13 +266,13 @@ export default function RealtimeDashboard() {
       </div>
 
       {/* Alerts Section */}
-      {metrics.alerts.length > 0 && (
-        <div className="space-y-2">
+      {metrics.alerts && metrics.alerts.length > 0 && (
+        <div className="space-y-2 mb-4">
           {metrics.alerts.map((alert, index) => (
             <Alert key={index} className={getAlertColor(alert.type)}>
               {getAlertIcon(alert.type)}
               <AlertTitle className="font-semibold">
-                {alert.category.toUpperCase()} - Prioridad: {alert.priority}
+                {alert.category === 'inventory' ? 'INVENTARIO' : alert.category.toUpperCase()} - Prioridad: {alert.priority === 'high' ? 'Alta' : alert.priority === 'medium' ? 'Media' : 'Baja'}
               </AlertTitle>
               <AlertDescription>{alert.message}</AlertDescription>
             </Alert>
@@ -271,7 +286,7 @@ export default function RealtimeDashboard() {
           <Package className="w-5 h-5 text-blue-600" />
           Inventario y Stock
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Productos</CardTitle>
@@ -338,7 +353,7 @@ export default function RealtimeDashboard() {
           <DollarSign className="w-5 h-5 text-purple-600" />
           Métricas Financieras
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Valor Inventario</CardTitle>
@@ -392,7 +407,7 @@ export default function RealtimeDashboard() {
           <FileText className="w-5 h-5 text-indigo-600" />
           Seguimiento de Guías
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Escaneadas</CardTitle>
@@ -435,14 +450,14 @@ export default function RealtimeDashboard() {
       </div>
 
       {/* Main Metrics Grid - Row 4: Scanning & Delivery */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         {/* Scanning Activity */}
         <div>
           <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
             <Scan className="w-5 h-5 text-cyan-600" />
             Actividad de Escaneo (Hoy)
           </h3>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-2 sm:gap-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Sesiones Activas</CardTitle>
@@ -474,7 +489,7 @@ export default function RealtimeDashboard() {
             <Truck className="w-5 h-5 text-teal-600" />
             Guías de Despacho (Último mes)
           </h3>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-2 sm:gap-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Total Guías</CardTitle>
@@ -520,7 +535,7 @@ export default function RealtimeDashboard() {
       </div>
 
       {/* Bottom Section: Top Products & System Activity */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         {/* Top Products */}
         <Card className="lg:col-span-2">
           <CardHeader>

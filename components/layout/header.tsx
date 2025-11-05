@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { ChevronDown, User, Settings, LogOut, BookOpen, Code, Database, Layers, Zap, Shield } from "lucide-react"
+import { ChevronDown, User, Settings, LogOut, BookOpen, Code, Database, Layers, Zap, Shield, Menu } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
@@ -24,7 +24,7 @@ interface HeaderProps {
 
 export default function Header({ onOpenTutorial, showTutorialButton = false }: HeaderProps) {
   const { user, logout } = useAuth()
-  const { activeModule, setActiveModule } = useApp()
+  const { activeModule, setActiveModule, sidebarCollapsed, setSidebarCollapsed } = useApp()
   const [showProfileModal, setShowProfileModal] = useState(false)
 
   const handleViewProfile = () => {
@@ -64,13 +64,35 @@ export default function Header({ onOpenTutorial, showTutorialButton = false }: H
   const moduleInfo = getModuleInfo()
 
   return (
-    <div className="bg-white border-b border-slate-200 px-6 py-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-900">{moduleInfo.title}</h2>
-          <p className="text-slate-600">{moduleInfo.description}</p>
+    <div className="bg-white border-b border-slate-200 px-4 sm:px-6 py-4">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3 lg:gap-4 min-w-0 flex-1">
+          {/* Menu toggle button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="lg:hidden p-2"
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+          >
+            <Menu className="w-5 h-5" />
+          </Button>
+          
+          {/* Desktop sidebar toggle */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="hidden lg:flex p-2"
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+          >
+            <Menu className="w-5 h-5" />
+          </Button>
+          
+          <div className="min-w-0">
+            <h2 className="text-xl sm:text-2xl font-bold text-slate-900 truncate">{moduleInfo.title}</h2>
+            <p className="text-sm sm:text-base text-slate-600 truncate">{moduleInfo.description}</p>
+          </div>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
           {showTutorialButton && (
             <Button
               variant="outline"
@@ -85,7 +107,7 @@ export default function Header({ onOpenTutorial, showTutorialButton = false }: H
           <NotificationBell />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" className="hidden sm:flex">
                 <Avatar className="w-6 h-6 mr-2">
                   <AvatarImage src="/placeholder.svg" />
                   <AvatarFallback>
@@ -96,8 +118,23 @@ export default function Header({ onOpenTutorial, showTutorialButton = false }: H
                       : "U"}
                   </AvatarFallback>
                 </Avatar>
-                {user?.full_name || user?.username}
+                <span className="hidden md:inline">{user?.full_name || user?.username}</span>
                 <ChevronDown className="w-4 h-4 ml-2" />
+              </Button>
+            </DropdownMenuTrigger>
+            {/* Mobile user button */}
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="sm:hidden p-2">
+                <Avatar className="w-8 h-8">
+                  <AvatarImage src="/placeholder.svg" />
+                  <AvatarFallback>
+                    {(user?.full_name || user?.username)
+                      ? (user.full_name || user.username).split(" ")
+                          .map((n) => n[0])
+                          .join("")
+                      : "U"}
+                  </AvatarFallback>
+                </Avatar>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
