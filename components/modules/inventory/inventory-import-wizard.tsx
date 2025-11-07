@@ -464,7 +464,7 @@ export default function InventoryImportWizard({ isOpen, onClose, onImportComplet
                       No necesitas renombrar tus columnas si usan nombres estándar del mercado.
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Columnas opcionales: description, category, brand, unit, sale_price, min_stock, max_stock, location, barcode
+                      Columnas opcionales: description, category, brand, proveedor, unit, sale_price, min_stock, max_stock, location, barcode
                     </p>
                   </AlertDescription>
                 </Alert>

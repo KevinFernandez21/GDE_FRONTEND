@@ -36,6 +36,7 @@ interface Product {
   description?: string
   category?: string
   brand?: string
+  proveedor?: string
   model?: string
   unit_of_measure: string
   cost_price?: number // Precio de costo (backend)
@@ -110,6 +111,7 @@ export default function InventoryModule() {
     description: "",
     category: "",
     brand: "",
+    proveedor: "",
     model: "",
     unit_of_measure: "unit",
     cost_price: 0,
@@ -279,6 +281,7 @@ export default function InventoryModule() {
         description: productForm.description?.trim() || null,
         category: productForm.category?.trim() || null,
         brand: productForm.brand?.trim() || null,
+        proveedor: productForm.proveedor?.trim() || null,
         model: productForm.model?.trim() || null,
         unit_of_measure: productForm.unit_of_measure,
         // Use DB column names directly
@@ -473,6 +476,7 @@ export default function InventoryModule() {
       description: "",
       category: "",
       brand: "",
+      proveedor: "",
       model: "",
       unit_of_measure: "unit",
       cost_price: 0,
@@ -496,6 +500,7 @@ export default function InventoryModule() {
       description: product.description || "",
       category: product.category || "",
       brand: product.brand || "",
+      proveedor: product.proveedor || "",
       model: product.model || "",
       unit_of_measure: product.unit_of_measure || "unit",
       cost_price: productAny.cost_price || productAny.purchase_price || 0,
@@ -729,6 +734,7 @@ export default function InventoryModule() {
                         <TableHead className="px-4 lg:px-6 py-3 lg:py-4">Código</TableHead>
                         <TableHead className="px-4 lg:px-6 py-3 lg:py-4">Nombre</TableHead>
                         <TableHead className="px-4 lg:px-6 py-3 lg:py-4">Categoría</TableHead>
+                        <TableHead className="px-4 lg:px-6 py-3 lg:py-4">Proveedor</TableHead>
                         <TableHead className="px-4 lg:px-6 py-3 lg:py-4">Stock Actual</TableHead>
                         <TableHead className="px-4 lg:px-6 py-3 lg:py-4">Stock Mínimo</TableHead>
                         <TableHead className="px-4 lg:px-6 py-3 lg:py-4">Precio de Venta</TableHead>
@@ -739,7 +745,7 @@ export default function InventoryModule() {
                   <TableBody>
                     {isLoading ? (
                       <TableRow>
-                        <TableCell colSpan={9} className="text-center py-12 px-4 lg:px-6">
+                        <TableCell colSpan={10} className="text-center py-12 px-4 lg:px-6">
                           <div className="flex flex-col items-center space-y-2">
                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                             <p className="text-gray-500">Cargando productos...</p>
@@ -748,7 +754,7 @@ export default function InventoryModule() {
                       </TableRow>
                     ) : filteredProducts.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={9} className="text-center py-12 px-4 lg:px-6">
+                        <TableCell colSpan={10} className="text-center py-12 px-4 lg:px-6">
                           <div className="flex flex-col items-center space-y-2">
                             <Package className="w-8 h-8 text-gray-400" />
                             <p className="text-gray-500">No se encontraron productos</p>
@@ -770,6 +776,7 @@ export default function InventoryModule() {
                           </TableCell>
                           <TableCell className="px-4 lg:px-6 py-3 lg:py-4">{product.name}</TableCell>
                           <TableCell className="px-4 lg:px-6 py-3 lg:py-4">{product.category || "-"}</TableCell>
+                          <TableCell className="px-4 lg:px-6 py-3 lg:py-4">{product.proveedor || "-"}</TableCell>
                           <TableCell className="px-4 lg:px-6 py-3 lg:py-4">
                             <span className={`font-semibold ${
                               formatNumber(product.current_stock) === 0 ? "text-red-600" :
@@ -854,6 +861,12 @@ export default function InventoryModule() {
                                   <>
                                     <span>•</span>
                                     <span>{product.category}</span>
+                                  </>
+                                )}
+                                {product.proveedor && (
+                                  <>
+                                    <span>•</span>
+                                    <span>{product.proveedor}</span>
                                   </>
                                 )}
                               </div>
@@ -1126,6 +1139,15 @@ export default function InventoryModule() {
                     value={productForm.brand}
                     onChange={(e) => setProductForm(prev => ({ ...prev, brand: e.target.value }))}
                     placeholder="Nombre de la marca"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="proveedor">Proveedor</Label>
+                  <Input
+                    id="proveedor"
+                    value={productForm.proveedor}
+                    onChange={(e) => setProductForm(prev => ({ ...prev, proveedor: e.target.value }))}
+                    placeholder="Nombre del proveedor"
                   />
                 </div>
                 <div>
