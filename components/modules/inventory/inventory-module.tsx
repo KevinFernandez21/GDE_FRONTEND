@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { Search, Filter, Download, Plus, Eye, Edit, Trash2, Package, AlertTriangle, Upload, RotateCcw, ChevronLeft, ChevronRight } from "lucide-react"
+import { Search, Filter, Download, Plus, Eye, Edit, Trash2, Package, AlertTriangle, Upload, RotateCcw, ChevronLeft, ChevronRight, Scan, Camera, CameraOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -27,6 +27,7 @@ import { toast } from "sonner"
 import { apiClient } from "@/lib/api"
 import { useAuth } from "@/contexts/auth-context"
 import InventoryImportWizard from "./inventory-import-wizard"
+import ProductQRScanner from "./product-qr-scanner"
 
 interface Product {
   id: string
@@ -652,6 +653,7 @@ export default function InventoryModule() {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList>
           <TabsTrigger value="products">Productos</TabsTrigger>
+          <TabsTrigger value="scanner">Escáner QR</TabsTrigger>
           <TabsTrigger value="import">Importar Datos</TabsTrigger>
         </TabsList>
 
@@ -987,6 +989,24 @@ export default function InventoryModule() {
                   </div>
                 </div>
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* QR Scanner Tab */}
+        <TabsContent value="scanner" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Scan className="w-5 h-5" />
+                Escáner QR de Productos
+              </CardTitle>
+              <CardDescription>
+                Escanea códigos QR en los estantes para buscar productos rápidamente
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ProductQRScanner />
             </CardContent>
           </Card>
         </TabsContent>

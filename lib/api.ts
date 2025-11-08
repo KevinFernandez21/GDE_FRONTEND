@@ -226,6 +226,10 @@ class ApiClient {
     });
   }
 
+  async searchProductByCode(code: string) {
+    return this.request<any>(`/inventory/products/search/${encodeURIComponent(code)}`);
+  }
+
   // Users endpoints
   async getUsers() {
     return this.request<any[]>('/users');
