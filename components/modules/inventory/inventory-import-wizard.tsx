@@ -25,6 +25,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
 import { apiClient } from "@/lib/api"
 
@@ -172,44 +173,84 @@ export default function InventoryImportWizard({ isOpen, onClose, onImportComplet
     setIsDragging(false)
   }, [])
 
-  // Validate file
+  // Validate file (dry-run mode)
   const validateFile = async (file: File) => {
     setIsValidating(true)
     
     try {
-      const formData = new FormData()
-      formData.append('file', file)
+      const response = await apiClient.validateImport(file)
       
-      const token = localStorage.getItem('gde_token')
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000/api/v1'
-      const response = await fetch(`${API_BASE_URL}/inventory/import/validate`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
-        body: formData
-      })
+      if (response.error) {
+        toast.error("Error al validar", {
+          description: response.error.message || "Error desconocido"
+        })
+        setStep("upload")
+        return
+      }
       
-      const data = await response.json()
-      
-      if (response.ok && data.success) {
-        setValidationResult(data.data)
+      if (response.data) {
+        // Map response to ValidationResult format
+        const validationData: ValidationResult = {
+          success: response.data.valid_for_import || false,
+          valid_for_import: response.data.valid_for_import || false,
+          file_info: {
+            rows: response.data.total_rows || 0,
+            columns: Object.keys(response.data.column_mapping || {}).length,
+            file_type: file.name.endsWith('.csv') ? 'csv' : 'xlsx'
+          },
+          column_validation: {
+            valid: response.data.valid_for_import || false,
+            file_columns: Object.keys(response.data.column_mapping || {}),
+            column_mapping: Object.entries(response.data.column_mapping || {}).map(([key, value]) => ({
+              column_name: key,
+              original_name: key,
+              status: "required" as const,
+              message: `Mapeado a ${value}`,
+              can_remove: false
+            })),
+            required_columns: ['sku', 'name'],
+            optional_columns: [],
+            missing_required: [],
+            unknown_columns: []
+          },
+          data_validation: {
+            critical_errors: (response.data.errors || []).filter((e: any) => e.error && !e.error.includes('warning')).map((e: any) => ({
+              message: `${e.field ? `Campo "${e.field}": ` : ''}${e.error || e.message || "Error de validación"}${e.value ? ` (valor: ${e.value})` : ''}`,
+              affected_rows: [e.row || e.line || 0],
+              total_affected: 1
+            })),
+            warnings: (response.data.errors || []).filter((e: any) => e.error && e.error.includes('warning')).map((e: any) => ({
+              message: `${e.field ? `Campo "${e.field}": ` : ''}${e.error || e.message || "Advertencia"}${e.value ? ` (valor: ${e.value})` : ''}`,
+              affected_rows: [e.row || e.line || 0],
+              total_affected: 1
+            })),
+            total_errors: response.data.invalid_rows || 0
+          },
+          duplicate_check: {
+            has_duplicates: false,
+            duplicate_rows: []
+          },
+          preview_data: response.data.preview || [],
+          recommendations: [],
+          schema: {
+            required_columns: ['sku', 'name'],
+            optional_columns: [],
+            column_definitions: {}
+          }
+        }
+        
+        setValidationResult(validationData)
         setStep("review")
         
-        if (data.data.valid_for_import) {
+        if (response.data.valid_for_import) {
           toast.success("Validación exitosa", {
-            description: "El archivo está listo para importar"
+            description: `${response.data.valid_rows} filas válidas de ${response.data.total_rows} totales`
           })
         } else {
           toast.warning("Errores detectados", {
-            description: "Revisa los errores antes de continuar"
+            description: `${response.data.invalid_rows} filas con errores. Revisa los detalles antes de continuar`
           })
         }
-      } else {
-        toast.error("Error al validar", {
-          description: data.message || "Error desconocido"
-        })
-        setStep("upload")
       }
     } catch (error: any) {
       console.error("Validation error:", error)
@@ -222,6 +263,8 @@ export default function InventoryImportWizard({ isOpen, onClose, onImportComplet
     }
   }
 
+  const [importOnlyValid, setImportOnlyValid] = useState(false)
+
   // Handle import
   const handleImport = async () => {
     if (!selectedFile || !validationResult) return
@@ -230,43 +273,32 @@ export default function InventoryImportWizard({ isOpen, onClose, onImportComplet
     setStep("import")
     
     try {
-      const formData = new FormData()
-      formData.append('file', selectedFile)
-      formData.append('update_existing', 'true')
+      const response = await apiClient.importInventory(selectedFile, importOnlyValid)
       
-      const token = localStorage.getItem('gde_token')
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000/api/v1'
-      const response = await fetch(`${API_BASE_URL}/inventory/import/import`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
-        body: formData
-      })
+      if (response.error) {
+        toast.error("Error en la importación", {
+          description: response.error.message || "Error desconocido"
+        })
+        setStep("review")
+        return
+      }
       
-      const data = await response.json()
-      
-      if (response.ok && data.success) {
-        setImportResult(data.data)
+      if (response.data) {
+        setImportResult(response.data)
         setStep("complete")
         
         toast.success("Importación exitosa", {
-          description: data.message
+          description: `${response.data.successful || 0} productos procesados exitosamente`
         })
         
         if (onImportComplete) {
           onImportComplete()
         }
-      } else {
-        toast.error("Error en la importación", {
-          description: data.message || data.detail || "Error desconocido"
-        })
-        setStep("review")
       }
     } catch (error: any) {
       console.error("Import error:", error)
       toast.error("Error al importar", {
-        description: error.response?.data?.detail || error.message || "Error desconocido"
+        description: error.message || "Error desconocido"
       })
       setStep("review")
     } finally {
@@ -676,32 +708,48 @@ export default function InventoryImportWizard({ isOpen, onClose, onImportComplet
                     <TabsContent value="errors" className="space-y-4">
                       <ScrollArea className="h-[300px] sm:h-[400px] border rounded-md">
                         <div className="space-y-3 p-4">
-                          {validationResult.data_validation?.critical_errors?.map((error, index) => (
-                            <Alert key={`error-${index}`} variant="destructive">
-                              <XCircle className="h-4 w-4" />
-                              <AlertTitle className="font-medium">{error.message}</AlertTitle>
-                              <AlertDescription className="text-sm">
-                                {error.affected_rows && (
-                                  <p>Filas afectadas: {error.affected_rows.join(", ")}</p>
-                                )}
-                                {error.total_affected && error.total_affected > 10 && (
-                                  <p className="text-xs mt-1">...y {error.total_affected - 10} más</p>
-                                )}
-                              </AlertDescription>
-                            </Alert>
-                          ))}
+                          {validationResult.data_validation?.critical_errors && validationResult.data_validation.critical_errors.length > 0 ? (
+                            validationResult.data_validation.critical_errors.map((error, index) => (
+                              <Alert key={`error-${index}`} variant="destructive">
+                                <XCircle className="h-4 w-4" />
+                                <AlertTitle className="font-medium">
+                                  Fila {error.affected_rows?.[0] || index + 1}: {error.message}
+                                </AlertTitle>
+                                <AlertDescription className="text-sm">
+                                  {error.affected_rows && error.affected_rows.length > 1 && (
+                                    <p className="text-xs mt-1">También afecta a las filas: {error.affected_rows.slice(1).join(", ")}</p>
+                                  )}
+                                  {error.total_affected && error.total_affected > 10 && (
+                                    <p className="text-xs mt-1">...y {error.total_affected - 10} filas más</p>
+                                  )}
+                                </AlertDescription>
+                              </Alert>
+                            ))
+                          ) : (
+                            <div className="text-center py-8 text-muted-foreground">
+                              <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-green-500" />
+                              <p>No se encontraron errores críticos</p>
+                            </div>
+                          )}
                           
-                          {validationResult.data_validation?.warnings?.map((warning, index) => (
-                            <Alert key={`warning-${index}`}>
-                              <AlertTriangle className="h-4 w-4" />
-                              <AlertTitle className="font-medium">{warning.message}</AlertTitle>
-                              <AlertDescription className="text-sm">
-                                {warning.affected_rows && (
-                                  <p>Filas afectadas: {warning.affected_rows.join(", ")}</p>
-                                )}
-                              </AlertDescription>
-                            </Alert>
-                          ))}
+                          {validationResult.data_validation?.warnings && validationResult.data_validation.warnings.length > 0 && (
+                            <>
+                              <div className="text-sm font-medium mt-4 mb-2">Advertencias:</div>
+                              {validationResult.data_validation.warnings.map((warning, index) => (
+                                <Alert key={`warning-${index}`}>
+                                  <AlertTriangle className="h-4 w-4" />
+                                  <AlertTitle className="font-medium">
+                                    Fila {warning.affected_rows?.[0] || index + 1}: {warning.message}
+                                  </AlertTitle>
+                                  <AlertDescription className="text-sm">
+                                    {warning.affected_rows && warning.affected_rows.length > 1 && (
+                                      <p className="text-xs mt-1">También afecta a las filas: {warning.affected_rows.slice(1).join(", ")}</p>
+                                    )}
+                                  </AlertDescription>
+                                </Alert>
+                              ))}
+                            </>
+                          )}
                         </div>
                       </ScrollArea>
                     </TabsContent>
@@ -853,19 +901,36 @@ export default function InventoryImportWizard({ isOpen, onClose, onImportComplet
               </Button>
             )}
             
-            {step === "review" && validationResult && validationResult.valid_for_import && (
-              <Button
-                onClick={handleImport}
-                disabled={isImporting}
-                className="flex items-center gap-2"
-              >
-                {isImporting ? (
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                ) : (
-                  <ArrowRight className="h-4 w-4" />
+            {step === "review" && validationResult && (
+              <div className="flex flex-col gap-3">
+                {validationResult.data_validation?.total_errors > 0 && (
+                  <div className="flex items-center space-x-2 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                    <Checkbox
+                      id="import-only-valid"
+                      checked={importOnlyValid}
+                      onCheckedChange={(checked) => setImportOnlyValid(checked === true)}
+                    />
+                    <Label
+                      htmlFor="import-only-valid"
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                    >
+                      Importar solo filas válidas ({validationResult.file_info?.rows - (validationResult.data_validation?.total_errors || 0)} de {validationResult.file_info?.rows} filas)
+                    </Label>
+                  </div>
                 )}
-                {isImporting ? "Importando..." : "Importar Productos"}
-              </Button>
+                <Button
+                  onClick={handleImport}
+                  disabled={isImporting || (!validationResult.valid_for_import && !importOnlyValid)}
+                  className="flex items-center gap-2"
+                >
+                  {isImporting ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <ArrowRight className="h-4 w-4" />
+                  )}
+                  {isImporting ? "Importando..." : "Importar Productos"}
+                </Button>
+              </div>
             )}
             
             {step === "complete" && (

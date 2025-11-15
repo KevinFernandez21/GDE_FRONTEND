@@ -63,9 +63,13 @@ class ApiClient {
     console.log(`[ApiClient] Has token:`, !!this.token);
     
     const headers: HeadersInit = {
-      'Content-Type': 'application/json',
       ...options.headers,
     };
+    
+    // Only set Content-Type for JSON, not for FormData (browser will set it with boundary)
+    if (!(options.body instanceof FormData)) {
+      headers['Content-Type'] = 'application/json';
+    }
 
     if (this.token) {
       headers.Authorization = `Bearer ${this.token}`;
@@ -132,6 +136,13 @@ class ApiClient {
 
       // Handle backend success response format
       if (data.status === 'success') {
+        // For login responses, data.data contains the login response
+        if (data.data && (data.data.access_token || data.data.token)) {
+          return { 
+            data: data.data,
+            message: data.message 
+          };
+        }
         return { 
           data: data.data || data,
           message: data.message 
@@ -177,6 +188,30 @@ class ApiClient {
 
   // Auth endpoints
   async login(username: string, password: string) {
+    // Clean username and password to remove any control characters and whitespace
+    const cleanUsername = username.trim().replace(/[\x00-\x1F\x7F]/g, '')
+    const cleanPassword = password.trim().replace(/[\x00-\x1F\x7F]/g, '')
+    
+    // Create the request body object
+    const requestBody = { 
+      username: cleanUsername, 
+      password: cleanPassword, 
+      remember_me: false 
+    }
+    
+    // Stringify with error handling
+    let bodyString: string
+    try {
+      bodyString = JSON.stringify(requestBody)
+    } catch (error) {
+      console.error('[ApiClient] Error stringifying login request:', error)
+      return {
+        error: 'Error al preparar la solicitud de login'
+      }
+    }
+    
+    console.log('[ApiClient] Login request body:', bodyString)
+    
     return this.request<{
       access_token: string; 
       token_type: string;
@@ -184,14 +219,7 @@ class ApiClient {
       user: any;
     }>('/auth/login-simple', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ 
-        username, 
-        password, 
-        remember_me: false 
-      }),
+      body: bodyString,
     });
   }
 
@@ -208,6 +236,38 @@ class ApiClient {
   // Inventory endpoints
   async getInventory() {
     return this.request<any[]>('/inventory/products');
+  }
+
+  async getProducts(params?: {
+    page?: number;
+    page_size?: number;
+    q?: string;
+    sku?: string;
+    category?: string;
+    provider?: string;
+    min_stock?: number;
+    max_stock?: number;
+    sort_by?: string;
+    active_only?: boolean;
+  }) {
+    const queryParams = new URLSearchParams();
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.page_size) queryParams.append('page_size', params.page_size.toString());
+    if (params?.q) queryParams.append('q', params.q);
+    if (params?.sku) queryParams.append('sku', params.sku);
+    if (params?.category) queryParams.append('category', params.category);
+    if (params?.provider) queryParams.append('provider', params.provider);
+    if (params?.min_stock !== undefined) queryParams.append('min_stock', params.min_stock.toString());
+    if (params?.max_stock !== undefined) queryParams.append('max_stock', params.max_stock.toString());
+    if (params?.sort_by) queryParams.append('sort_by', params.sort_by);
+    if (params?.active_only !== undefined) queryParams.append('active_only', params.active_only.toString());
+    
+    const queryString = queryParams.toString();
+    const endpoint = `/inventory/products${queryString ? `?${queryString}` : ''}`;
+    console.log('[ApiClient] getProducts - endpoint:', endpoint, 'params:', params);
+    const response = await this.request<any>(endpoint);
+    console.log('[ApiClient] getProducts - response:', response);
+    return response;
   }
 
   async createProduct(product: any) {
@@ -232,6 +292,27 @@ class ApiClient {
 
   async searchProductByCode(code: string) {
     return this.request<any>(`/inventory/products/search/${encodeURIComponent(code)}`);
+  }
+
+  async validateImport(file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.request<any>('/inventory/import/validate', {
+      method: 'POST',
+      body: formData,
+    });
+  }
+
+  async importProducts(file: File, options?: { import_only_valid?: boolean }) {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (options?.import_only_valid !== undefined) {
+      formData.append('import_only_valid', options.import_only_valid.toString());
+    }
+    return this.request<any>('/inventory/import', {
+      method: 'POST',
+      body: formData,
+    });
   }
 
   // Users endpoints
@@ -282,6 +363,11 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify({ type, filters }),
     });
+  }
+
+  // Dashboard endpoints
+  async getStockMetrics() {
+    return this.request<any>('/dashboard/realtime-metrics');
   }
 
   // Health check

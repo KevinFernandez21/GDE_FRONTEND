@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -33,11 +33,17 @@ export default function ProductQRScanner() {
   const [hasCamera, setHasCamera] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [scanHistory, setScanHistory] = useState<ScannedProduct[]>([])
+  const [lastScannedCode, setLastScannedCode] = useState<string | null>(null)
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const retryCountRef = useRef<number>(0)
 
   useEffect(() => {
     checkCameraAvailability()
     return () => {
       stopScanning()
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current)
+      }
     }
   }, [])
 
@@ -108,87 +114,159 @@ export default function ProductQRScanner() {
     setIsScanning(false)
   }
 
-  const handleQRScanned = async (code: string) => {
-    if (!code || code.trim() === '') return
+  // Validate product payload structure
+  const validateProductPayload = (product: any): product is ScannedProduct => {
+    if (!product) return false
+    // Must have at least id or code/sku, and name
+    const hasId = !!product.id
+    const hasCode = !!(product.code || product.sku)
+    const hasName = !!product.name
+    return (hasId || hasCode) && hasName
+  }
 
-    // Evitar múltiples escaneos del mismo código en poco tiempo (debounce)
-    const trimmedCode = code.trim()
-    if (scannedProduct && (scannedProduct.code === trimmedCode || scannedProduct.sku === trimmedCode)) {
-      console.log('[QR Scanner] Código ya escaneado, ignorando...')
-      return
-    }
-
-    // Detener el escáner temporalmente mientras procesamos
-    if (qrScannerRef.current) {
-      qrScannerRef.current.stop()
-    }
-
-    setIsLoading(true)
-    setError(null)
-
-    try {
-      console.log('[QR Scanner] Buscando producto con código:', trimmedCode)
-      
-      // Buscar producto por código/SKU/barcode
-      const response = await apiClient.searchProductByCode(trimmedCode)
-      
-      console.log('[QR Scanner] Respuesta del servidor:', response)
-      
-      // Handle both response formats: {data: {...}} or direct product object
-      const product = response.data || response
-      
-      if (product && (product.id || product.code || product.sku)) {
+  // Search product with retry and backoff
+  const searchProductWithRetry = async (code: string, maxRetries: number = 3): Promise<ScannedProduct | null> => {
+    let lastError: Error | null = null
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        // Exponential backoff: 100ms, 200ms, 400ms
+        if (attempt > 0) {
+          const delay = 100 * Math.pow(2, attempt - 1)
+          await new Promise(resolve => setTimeout(resolve, delay))
+        }
+        
+        console.log(`[QR Scanner] Intento ${attempt + 1}/${maxRetries} para código:`, code)
+        
+        const response = await apiClient.searchProductByCode(code)
+        
+        // Handle both response formats: {data: {...}} or direct product object
+        const product = response.data || response
+        
+        // Validate payload structure
+        if (!validateProductPayload(product)) {
+          throw new Error("Respuesta inválida del servidor: estructura de datos incorrecta")
+        }
+        
+        // Build product data
         const productData: ScannedProduct = {
           id: product.id || '',
-          code: product.code || product.sku || trimmedCode,
-          sku: product.sku || product.code || trimmedCode,
+          code: product.code || product.sku || code,
+          sku: product.sku || product.code || code,
           name: product.name || 'Producto sin nombre',
-          sale_price: product.sale_price || product.price || 0,
-          cost_price: product.cost_price || product.cost || 0,
-          current_stock: product.current_stock || 0,
-          min_stock: product.min_stock || 0,
+          sale_price: typeof product.sale_price === 'number' ? product.sale_price : (product.price || 0),
+          cost_price: typeof product.cost_price === 'number' ? product.cost_price : (product.cost || 0),
+          current_stock: typeof product.current_stock === 'number' ? product.current_stock : 0,
+          min_stock: typeof product.min_stock === 'number' ? product.min_stock : 0,
           category: product.category,
           brand: product.brand,
-          proveedor: product.proveedor,
+          proveedor: product.proveedor || product.provider,
           location: product.location,
         }
         
-        setScannedProduct(productData)
+        retryCountRef.current = 0 // Reset retry count on success
+        return productData
         
-        // Agregar al historial (máximo 10)
-        setScanHistory(prev => {
-          const newHistory = [productData, ...prev.filter(p => p.id !== productData.id && p.code !== productData.code)]
-          return newHistory.slice(0, 10)
-        })
+      } catch (error: any) {
+        lastError = error instanceof Error ? error : new Error(String(error))
+        console.warn(`[QR Scanner] Intento ${attempt + 1} falló:`, lastError.message)
         
-        toast.success(`Producto encontrado: ${productData.name}`)
+        // Don't retry on 404 (product not found)
+        if (error.error?.code === '404' || error.response?.status === 404) {
+          throw new Error("Producto no encontrado")
+        }
+      }
+    }
+    
+    // All retries failed
+    throw lastError || new Error("Error al buscar producto después de múltiples intentos")
+  }
+
+  const handleQRScanned = useCallback(async (code: string) => {
+    if (!code || code.trim() === '') return
+
+    const trimmedCode = code.trim()
+    
+    // Debounce: ignore if same code scanned within 300ms
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current)
+    }
+    
+    // Check if same code was just scanned
+    if (lastScannedCode === trimmedCode) {
+      console.log('[QR Scanner] Código duplicado (debounce), ignorando...')
+      return
+    }
+    
+    // Set debounce timer
+    debounceTimerRef.current = setTimeout(async () => {
+      // Check again after debounce period
+      if (lastScannedCode === trimmedCode) {
+        return
+      }
+      
+      setLastScannedCode(trimmedCode)
+      
+      // Check if product already in history
+      if (scannedProduct && (scannedProduct.code === trimmedCode || scannedProduct.sku === trimmedCode)) {
+        console.log('[QR Scanner] Producto ya mostrado, ignorando...')
+        return
+      }
+
+      // Detener el escáner temporalmente mientras procesamos
+      if (qrScannerRef.current) {
+        qrScannerRef.current.stop()
+      }
+
+      setIsLoading(true)
+      setError(null)
+
+      try {
+        console.log('[QR Scanner] Buscando producto con código:', trimmedCode)
         
-        // Reiniciar el escáner después de un breve delay para permitir otro escaneo
+        // Search with retry and backoff
+        const productData = await searchProductWithRetry(trimmedCode, 3)
+        
+        if (productData) {
+          setScannedProduct(productData)
+          
+          // Agregar al historial (máximo 10)
+          setScanHistory(prev => {
+            const newHistory = [productData, ...prev.filter(p => p.id !== productData.id && p.code !== productData.code)]
+            return newHistory.slice(0, 10)
+          })
+          
+          toast.success(`Producto encontrado: ${productData.name}`)
+          
+          // Reiniciar el escáner después de un breve delay para permitir otro escaneo
+          setTimeout(() => {
+            if (qrScannerRef.current && isScanning) {
+              qrScannerRef.current.start()
+            }
+          }, 1000)
+        }
+      } catch (error: any) {
+        console.error('[QR Scanner] Error:', error)
+        const errorMessage = error.error?.message || error.message || "Producto no encontrado"
+        setError(`No se encontró producto con código: ${trimmedCode}`)
+        setScannedProduct(null)
+        toast.error(`No se encontró producto con código: ${trimmedCode}`)
+        
+        // Reiniciar el escáner después del error
         setTimeout(() => {
           if (qrScannerRef.current && isScanning) {
             qrScannerRef.current.start()
           }
-        }, 1000)
-      } else {
-        throw new Error("Producto no encontrado")
+        }, 2000)
+      } finally {
+        setIsLoading(false)
+        // Clear lastScannedCode after processing
+        setTimeout(() => {
+          setLastScannedCode(null)
+        }, 300)
       }
-    } catch (error: any) {
-      console.error('[QR Scanner] Error:', error)
-      const errorMessage = error.error || error.response?.data?.detail || error.message || "Producto no encontrado"
-      setError(`No se encontró producto con código: ${trimmedCode}`)
-      setScannedProduct(null)
-      toast.error(`No se encontró producto con código: ${trimmedCode}`)
-      
-      // Reiniciar el escáner después del error
-      setTimeout(() => {
-        if (qrScannerRef.current && isScanning) {
-          qrScannerRef.current.start()
-        }
-      }, 2000)
-    } finally {
-      setIsLoading(false)
-    }
-  }
+    }, 300) // 300ms debounce
+  }, [scannedProduct, isScanning, lastScannedCode])
 
   const clearScanned = () => {
     setScannedProduct(null)

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { Search, Filter, Download, Plus, Eye, Edit, Trash2, Package, AlertTriangle, Upload, RotateCcw, ChevronLeft, ChevronRight, Scan, Camera, CameraOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -24,10 +24,19 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
-import { apiClient } from "@/lib/api"
 import { useAuth } from "@/contexts/auth-context"
 import InventoryImportWizard from "./inventory-import-wizard"
 import ProductQRScanner from "./product-qr-scanner"
+import {
+  useProducts,
+  useCreateProduct,
+  useUpdateProduct,
+  useDeleteProduct,
+  useBulkDeleteProducts,
+  useStockMetrics,
+  type Product,
+  type ProductFilters,
+} from "@/hooks/use-products"
 
 interface Product {
   id: string
@@ -64,7 +73,6 @@ export default function InventoryModule() {
   
   // Selection state for bulk operations
   const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set())
-  const [isSelectAll, setIsSelectAll] = useState(false)
 
   // Helper function to safely format numbers
   const formatPrice = (price: any): string => {
@@ -87,16 +95,41 @@ export default function InventoryModule() {
     return isNaN(numValue) ? 0 : numValue
   }
 
-  // Products state
-  const [products, setProducts] = useState<Product[]>([])
-  const [isLoading, setIsLoading] = useState(false)
+  // Filters state
   const [searchQuery, setSearchQuery] = useState("")
   const [categoryFilter, setCategoryFilter] = useState("")
+  const [providerFilter, setProviderFilter] = useState("")
+  const [minStockFilter, setMinStockFilter] = useState<number | undefined>(undefined)
+  const [maxStockFilter, setMaxStockFilter] = useState<number | undefined>(undefined)
+  const [sortBy, setSortBy] = useState<string>("name")
   
   // Pagination state - Server-side pagination for performance
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize] = useState(50) // 50 products per page
-  const [totalProducts, setTotalProducts] = useState(0)
+  
+  // Build filters for React Query
+  const filters: ProductFilters = useMemo(() => ({
+    page: currentPage,
+    page_size: pageSize,
+    q: searchQuery.trim() || undefined,
+    category: categoryFilter && categoryFilter !== "all" ? categoryFilter : undefined,
+    provider: providerFilter && providerFilter !== "all" ? providerFilter : undefined,
+    min_stock: minStockFilter,
+    max_stock: maxStockFilter,
+    sort_by: sortBy,
+    active_only: true,
+  }), [currentPage, pageSize, searchQuery, categoryFilter, providerFilter, minStockFilter, maxStockFilter, sortBy])
+  
+  // Use React Query hooks
+  const { data: productsData, isLoading, error } = useProducts(filters)
+  const createProduct = useCreateProduct()
+  const updateProduct = useUpdateProduct()
+  const deleteProduct = useDeleteProduct()
+  const bulkDeleteProducts = useBulkDeleteProducts()
+  
+  // Extract products and pagination from response
+  const products = productsData?.items || []
+  const totalProducts = productsData?.total || 0
   const totalPages = Math.ceil(totalProducts / pageSize)
 
   // Import state
@@ -122,109 +155,34 @@ export default function InventoryModule() {
     max_stock: 0
   })
   
+  // Temporary string values for price inputs to allow decimal input
+  const [costPriceInput, setCostPriceInput] = useState<string>("")
+  const [salePriceInput, setSalePriceInput] = useState<string>("")
+  
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
-  const [isSaving, setIsSaving] = useState(false)
+  const isSaving = createProduct.isPending || updateProduct.isPending
 
   // Delete confirmation state
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  const isDeletingMutation = deleteProduct.isPending || bulkDeleteProducts.isPending
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false)
   const [showDeletingDialog, setShowDeletingDialog] = useState(false)
   const [deletingCount, setDeletingCount] = useState(0)
 
-  // Load products with server-side pagination (optimized for performance)
-  const loadProducts = useCallback(async (page: number) => {
-    try {
-      setIsLoading(true)
-      
-      // Build query parameters
-      const params = new URLSearchParams({
-        page: page.toString(),
-        size: pageSize.toString(),
-        active_only: "true" // Only show active products (exclude deleted)
-      })
-      
-      // Add search filter if present
-      if (searchQuery.trim()) {
-        params.append("search", searchQuery.trim())
-      }
-      
-      // Add category filter if present
-      if (categoryFilter && categoryFilter !== "all") {
-        params.append("category", categoryFilter)
-      }
-      
-      // Load products for current page
-      const response = await apiClient.request<{items: Product[], total: number, page: number, size: number}>(
-        `/inventory/products?${params.toString()}`,
-        {
-          method: "GET"
-        }
-      )
-
-      console.log("[InventoryModule] API Response:", response)
-      console.log("[InventoryModule] Response data:", response.data)
-      
-      if (response.data) {
-        // Map products for compatibility
-        const products = (response.data.items || []).map((product: any) => ({
-          ...product,
-          code: product.code || product.sku || "",
-          sku: product.sku || product.code || ""
-        }))
-        console.log("[InventoryModule] Mapped products:", products)
-        console.log("[InventoryModule] Total products:", response.data.total || 0)
-        setProducts(products)
-        setTotalProducts(response.data.total || 0)
-      } else if (response.error) {
-        // Handle error response - error can be string or array
-        const errorMessage = Array.isArray(response.error) 
-          ? response.error.map((err: any) => typeof err === 'string' ? err : err.msg || JSON.stringify(err)).join(', ')
-          : response.error || "Error loading products";
-        
-        console.error("[InventoryModule] Error response:", response.error)
-        toast.error(errorMessage)
-        setProducts([])
-        setTotalProducts(0)
-      } else {
-        // No data and no error - unexpected response
-        console.warn("[InventoryModule] Unexpected response format:", response)
-        toast.error("Error loading products: Unexpected response format")
-        setProducts([])
-        setTotalProducts(0)
-      }
-    } catch (error) {
-      toast.error("Error connecting to server")
-      console.error("Load products error:", error)
-      setProducts([])
-      setTotalProducts(0)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [pageSize, searchQuery, categoryFilter])
-
-  // Load data on mount
-  useEffect(() => {
-    loadProducts(1) // Initial load
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []) // Only run on mount
-  
-  // Reload products when search or filters change (reset to page 1)
+  // Reset to page 1 when filters change
   useEffect(() => {
     if (currentPage !== 1) {
       setCurrentPage(1)
-    } else {
-      // If already on page 1, reload
-      loadProducts(1)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery, categoryFilter])
+  }, [searchQuery, categoryFilter, providerFilter, minStockFilter, maxStockFilter, sortBy])
   
-  // Load products when page changes
+  // Handle error from React Query
   useEffect(() => {
-    loadProducts(currentPage)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage])
+    if (error?.message) {
+      toast.error(`Error al cargar productos: ${error.message}`)
+    }
+  }, [error?.message])
 
 
 
@@ -272,66 +230,60 @@ export default function InventoryModule() {
       return
     }
     
+    const isEditing = !!editingProduct
+
+    // Prepare data - send DB field names directly
+    const productData: any = {
+      name: productForm.name.trim(),
+      description: productForm.description?.trim() || null,
+      category: productForm.category?.trim() || null,
+      brand: productForm.brand?.trim() || null,
+      proveedor: productForm.proveedor?.trim() || null,
+      model: productForm.model?.trim() || null,
+      unit_of_measure: productForm.unit_of_measure,
+      // Use DB column names directly
+      sale_price: productForm.sale_price || 0,
+      cost_price: productForm.cost_price || 0,
+      current_stock: productForm.current_stock || 0,
+      min_stock: productForm.min_stock || 0,
+      max_stock: productForm.max_stock || 0,
+    }
+    
+    // Use code or sku (prefer code, fallback to sku)
+    if (productForm.code?.trim()) {
+      productData.code = productForm.code.trim()
+      productData.sku = productForm.code.trim() // Ensure both are set
+    } else if (productForm.sku?.trim()) {
+      productData.sku = productForm.sku.trim()
+      productData.code = productForm.sku.trim()
+    }
+    
+    // For new products, set initial_stock
+    if (!isEditing) {
+      productData.initial_stock = productForm.current_stock || 0
+    }
+
     try {
-      setIsSaving(true)
-      const isEditing = !!editingProduct
-
-      // Prepare data - send DB field names directly
-      const productData: any = {
-        name: productForm.name.trim(),
-        description: productForm.description?.trim() || null,
-        category: productForm.category?.trim() || null,
-        brand: productForm.brand?.trim() || null,
-        proveedor: productForm.proveedor?.trim() || null,
-        model: productForm.model?.trim() || null,
-        unit_of_measure: productForm.unit_of_measure,
-        // Use DB column names directly
-        sale_price: productForm.sale_price || 0,
-        cost_price: productForm.cost_price || 0,
-        current_stock: productForm.current_stock || 0,
-        min_stock: productForm.min_stock || 0,
-        max_stock: productForm.max_stock || 0,
-      }
-      
-      // Use code or sku (prefer code, fallback to sku)
-      if (productForm.code?.trim()) {
-        productData.code = productForm.code.trim()
-        productData.sku = productForm.code.trim() // Ensure both are set
-      } else if (productForm.sku?.trim()) {
-        productData.sku = productForm.sku.trim()
-        productData.code = productForm.sku.trim()
-      }
-      
-      // For new products, set initial_stock
-      if (!isEditing) {
-        productData.initial_stock = productForm.current_stock || 0
-      }
-
-      const response = await apiClient.request(
-        isEditing ? `/inventory/products/${editingProduct.id}` : "/inventory/products",
-        {
-          method: isEditing ? "PUT" : "POST",
-          body: JSON.stringify(productData)
-        }
-      )
-
-      if (response.data || response.message) {
-        toast.success(isEditing ? "Producto actualizado exitosamente" : "Producto creado exitosamente")
-        setShowProductDialog(false)
-        setEditingProduct(null)
-        resetProductForm()
-        setFormErrors({})
-        // Reload current page instead of page 1
-        loadProducts(currentPage)
+      console.log('[InventoryModule] Saving product, isEditing:', isEditing, 'productData:', productData)
+      if (isEditing && editingProduct) {
+        console.log('[InventoryModule] Updating product:', editingProduct.id, 'with data:', productData)
+        await updateProduct.mutateAsync({ id: editingProduct.id, product: productData })
+        toast.success("Producto actualizado correctamente")
       } else {
-        toast.error(response.error || "Error al guardar el producto")
+        console.log('[InventoryModule] Creating new product with data:', productData)
+        await createProduct.mutateAsync(productData)
+        toast.success("Producto creado correctamente")
       }
+      
+      setShowProductDialog(false)
+      setEditingProduct(null)
+      resetProductForm()
+      setFormErrors({})
     } catch (error: any) {
-      const errorMessage = error.response?.data?.detail || error.message || "Error al guardar el producto"
-      toast.error(errorMessage)
+      // Error handling is done in the mutation hooks
       console.error("Save product error:", error)
-    } finally {
-      setIsSaving(false)
+      const errorMessage = error?.message || error?.error || "Error al guardar el producto"
+      toast.error(errorMessage)
     }
   }
 
@@ -340,29 +292,13 @@ export default function InventoryModule() {
     if (!deleteTarget) return
     try {
       setIsDeleting(true)
-      const response = await apiClient.request(`/inventory/products/${deleteTarget.id}`, {
-        method: "DELETE"
-      })
-
-      if (response.data || response.message) {
-        toast.success("Producto eliminado exitosamente")
-        setDeleteTarget(null)
-        
-        // Notify dashboard to refresh
-        window.dispatchEvent(new CustomEvent('productsDeleted', { detail: { count: 1 } }))
-        
-        // Reload products (force refresh)
-        if (currentPage === 1) {
-          await loadProducts(1)
-        } else {
-          setCurrentPage(1)
-          await loadProducts(1)
-        }
-      } else {
-        toast.error(response.error || "Error al eliminar el producto")
-      }
+      await deleteProduct.mutateAsync(deleteTarget.id)
+      setDeleteTarget(null)
+      
+      // Notify dashboard to refresh
+      window.dispatchEvent(new CustomEvent('productsDeleted', { detail: { count: 1 } }))
     } catch (error) {
-      toast.error("Error al eliminar el producto")
+      // Error handling is done in the mutation hook
       console.error("Delete product error:", error)
     } finally {
       setIsDeleting(false)
@@ -378,7 +314,6 @@ export default function InventoryModule() {
       newSelected.add(productId)
     }
     setSelectedProducts(newSelected)
-    setIsSelectAll(newSelected.size === filteredProducts.length && filteredProducts.length > 0)
   }
 
   // Handle select all
@@ -389,7 +324,6 @@ export default function InventoryModule() {
       const allIds = new Set(filteredProducts.map(p => p.id))
       setSelectedProducts(allIds)
     }
-    setIsSelectAll(!isSelectAll)
   }
 
   // Handle bulk delete confirmation dialog
@@ -420,48 +354,25 @@ export default function InventoryModule() {
       setIsDeleting(true)
       
       const startTime = Date.now()
-      const response = await apiClient.request("/inventory/products/bulk-delete", {
-        method: "POST",
-        body: JSON.stringify(productIdsArray),
-        headers: {
-          "Content-Type": "application/json"
-        }
-      })
-
+      await bulkDeleteProducts.mutateAsync(productIdsArray)
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
 
       // Close deleting dialog
       setShowDeletingDialog(false)
-
-      if (response.data || response.message) {
-        toast.success(`${count} producto(s) eliminado(s) exitosamente`, {
-          description: `Operación completada en ${elapsed}s`
-        })
-        setSelectedProducts(new Set())
-        setIsSelectAll(false)
-        
-        // Notify dashboard to refresh
-        window.dispatchEvent(new CustomEvent('productsDeleted', { detail: { count } }))
-        
-        // Invalidate cache and reload products
-        // Force reload by resetting to page 1 if needed
-        if (currentPage === 1) {
-          // If on page 1, reload same page
-          await loadProducts(1)
-        } else {
-          // If on other page, go to page 1 to see updated list
-          setCurrentPage(1)
-          await loadProducts(1)
-        }
-      } else {
-        toast.error(response.error || "Error al eliminar los productos")
+      
+      setSelectedProducts(new Set())
+      
+      // Notify dashboard to refresh
+      window.dispatchEvent(new CustomEvent('productsDeleted', { detail: { count } }))
+      
+      // Reset to page 1 if needed
+      if (currentPage !== 1) {
+        setCurrentPage(1)
       }
     } catch (error) {
       // Close deleting dialog on error
       setShowDeletingDialog(false)
-      toast.error("Error al eliminar los productos", {
-        description: error instanceof Error ? error.message : "Error desconocido"
-      })
+      // Error handling is done in the mutation hook
       console.error("Bulk delete error:", error)
     } finally {
       setIsDeleting(false)
@@ -486,6 +397,9 @@ export default function InventoryModule() {
       min_stock: 0,
       max_stock: 0
     })
+    // Reset price input strings
+    setCostPriceInput("")
+    setSalePriceInput("")
     setFormErrors({})
   }
 
@@ -494,6 +408,8 @@ export default function InventoryModule() {
     setEditingProduct(product)
     // Map product data to form, handling both cost_price and purchase_price
     const productAny = product as any
+    const costPrice = productAny.cost_price || productAny.purchase_price || 0
+    const salePrice = product.sale_price || 0
     setProductForm({
       code: product.code || product.sku || "",
       sku: product.sku || product.code || "",
@@ -504,19 +420,22 @@ export default function InventoryModule() {
       proveedor: product.proveedor || "",
       model: product.model || "",
       unit_of_measure: product.unit_of_measure || "unit",
-      cost_price: productAny.cost_price || productAny.purchase_price || 0,
-      sale_price: product.sale_price || 0,
+      cost_price: costPrice,
+      sale_price: salePrice,
       current_stock: product.current_stock || 0,
       min_stock: product.min_stock || 0,
       max_stock: product.max_stock || 0
     })
+    // Sync price input strings
+    setCostPriceInput(costPrice > 0 ? costPrice.toString() : "")
+    setSalePriceInput(salePrice > 0 ? salePrice.toString() : "")
     setFormErrors({})
     setShowProductDialog(true)
   }
 
   // Filter products
-  // Server-side filtering is handled in loadProducts
-  // Products are already filtered by search and category on the server
+  // Server-side filtering is handled by React Query with filters
+  // Products are already filtered by search, category, provider, etc. on the server
   const filteredProducts = useMemo(() => {
     // Asegurar que products sea un array
     if (!Array.isArray(products)) {
@@ -528,29 +447,60 @@ export default function InventoryModule() {
     return products
   }, [products])
 
-  // Sync select all state when filtered products change
+  // Calculate isSelectAll directly (no useMemo to avoid Set comparison issues)
+  // This is a simple O(n) operation that runs on each render
+  const isSelectAll = filteredProducts.length > 0 && 
+                      filteredProducts.every(p => selectedProducts.has(p.id)) &&
+                      selectedProducts.size === filteredProducts.length
+
+  // Clean up selection when filters change (not when products data updates)
+  // This prevents infinite loops while still cleaning up invalid selections
+  const prevFiltersRef = useRef<string>('')
+  
   useEffect(() => {
-    if (filteredProducts.length === 0) {
-      setIsSelectAll(false)
-      setSelectedProducts(new Set())
+    const currentFilters = `${searchQuery}-${categoryFilter}-${providerFilter}-${minStockFilter}-${maxStockFilter}-${sortBy}`
+    
+    // Only clean selection when filters actually change, not when products update
+    if (currentFilters === prevFiltersRef.current) {
       return
     }
     
-    // Clean up selection: remove products that are no longer in filtered list
-    const filteredIds = new Set(filteredProducts.map(p => p.id))
+    prevFiltersRef.current = currentFilters
+    
+    // Clean up selection when filters change - use current filteredProducts
+    // This is safe because we only run when filters change, not when products update
+    const currentFilteredIds = new Set(filteredProducts.map(p => p.id))
     setSelectedProducts(prev => {
+      // If no filtered products, clear selection
+      if (currentFilteredIds.size === 0) {
+        if (prev.size === 0) return prev
+        return new Set()
+      }
+      
+      // Remove products that are no longer in filtered list
       const cleaned = new Set(
-        Array.from(prev).filter(id => filteredIds.has(id))
+        Array.from(prev).filter(id => currentFilteredIds.has(id))
       )
-      const allSelected = filteredProducts.length > 0 && filteredProducts.every(p => cleaned.has(p.id))
-      setIsSelectAll(allSelected)
+      // Only update if there's a change
+      if (cleaned.size === prev.size && Array.from(cleaned).every(id => prev.has(id))) {
+        return prev
+      }
       return cleaned
     })
-  }, [filteredProducts])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, categoryFilter, providerFilter, minStockFilter, maxStockFilter, sortBy])
 
-  // Get stock metrics
+  // Get stock metrics from API (all products in database)
+  const { data: stockMetricsData, isLoading: metricsLoading } = useStockMetrics()
+  
+  // Use API metrics if available, otherwise fallback to local calculation
   const stockMetrics = useMemo(() => {
-    // Asegurar que products sea un array
+    // If we have metrics from API, use those (they include ALL products)
+    if (stockMetricsData) {
+      return stockMetricsData
+    }
+    
+    // Fallback: calculate from current page products (for loading state)
     if (!Array.isArray(products)) {
       return {
         totalProducts: 0,
@@ -574,7 +524,7 @@ export default function InventoryModule() {
       outOfStock,
       categories
     }
-  }, [products])
+  }, [stockMetricsData, products])
 
   // Get categories for filter
   const categories = useMemo(() => {
@@ -698,26 +648,94 @@ export default function InventoryModule() {
             </CardHeader>
             <CardContent className="p-4 sm:p-6">
               {/* Filters */}
-              <div className="flex flex-col sm:flex-row gap-3 sm:space-x-4 mb-4 sm:mb-6">
-                <div className="flex-1 min-w-0">
-                  <Input
-                    placeholder="Buscar productos..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full"
-                  />
+              <div className="space-y-4 mb-4 sm:mb-6">
+                {/* Main filters row */}
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                      <Input
+                        placeholder="Buscar productos (nombre, SKU, descripción)..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-10 w-full"
+                      />
+                    </div>
+                  </div>
+                  <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                    <SelectTrigger className="w-full sm:w-48">
+                      <SelectValue placeholder="Todas las Categorías" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas las Categorías</SelectItem>
+                      {categories.map(category => (
+                        <SelectItem key={category} value={category}>{category}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={providerFilter} onValueChange={setProviderFilter}>
+                    <SelectTrigger className="w-full sm:w-48">
+                      <SelectValue placeholder="Todos los Proveedores" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos los Proveedores</SelectItem>
+                      {Array.from(new Set(products.map(p => p.proveedor || p.provider).filter(Boolean))).map((provider) => (
+                        <SelectItem key={provider} value={provider || ""}>
+                          {provider}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={sortBy} onValueChange={setSortBy}>
+                    <SelectTrigger className="w-full sm:w-48">
+                      <SelectValue placeholder="Ordenar por" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="name">Nombre</SelectItem>
+                      <SelectItem value="sku">SKU</SelectItem>
+                      <SelectItem value="stock">Stock</SelectItem>
+                      <SelectItem value="price">Precio</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-                <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                  <SelectTrigger className="w-full sm:w-48">
-                    <SelectValue placeholder="Todas las Categorías" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas las Categorías</SelectItem>
-                    {categories.map(category => (
-                      <SelectItem key={category} value={category}>{category}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                
+                {/* Advanced filters row */}
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <div className="w-full sm:w-32">
+                    <Input
+                      type="number"
+                      placeholder="Stock mín."
+                      value={minStockFilter ?? ""}
+                      onChange={(e) => setMinStockFilter(e.target.value ? parseInt(e.target.value) : undefined)}
+                      min="0"
+                      className="w-full"
+                    />
+                  </div>
+                  <div className="w-full sm:w-32">
+                    <Input
+                      type="number"
+                      placeholder="Stock máx."
+                      value={maxStockFilter ?? ""}
+                      onChange={(e) => setMaxStockFilter(e.target.value ? parseInt(e.target.value) : undefined)}
+                      min="0"
+                      className="w-full"
+                    />
+                  </div>
+                  {(minStockFilter !== undefined || maxStockFilter !== undefined || providerFilter !== "all") && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setMinStockFilter(undefined)
+                        setMaxStockFilter(undefined)
+                        setProviderFilter("all")
+                      }}
+                      className="w-full sm:w-auto"
+                    >
+                      Limpiar filtros
+                    </Button>
+                  )}
+                </div>
               </div>
 
               {/* Products Table - Desktop */}
@@ -1061,7 +1079,7 @@ export default function InventoryModule() {
               onClose={() => setShowImportWizard(false)}
               onImportComplete={() => {
                 setShowImportWizard(false)
-                loadProducts(1) // Reset to page 1 after import
+                setCurrentPage(1) // Reset to page 1 after import (React Query will refetch)
               }}
               onCancel={() => setShowImportWizard(false)}
             />
@@ -1214,11 +1232,38 @@ export default function InventoryModule() {
                   <Input
                     id="cost_price"
                     type="text"
-                    value={productForm.cost_price || ""}
+                    inputMode="decimal"
+                    value={costPriceInput}
                     onChange={(e) => {
-                      const value = e.target.value.replace(/[^0-9.]/g, '')
-                      const numValue = value === "" ? 0 : parseFloat(value) || 0
-                      setProductForm(prev => ({ ...prev, cost_price: numValue }))
+                      const value = e.target.value
+                      // Allow empty string, numbers, and one decimal point
+                      if (value === "" || /^\d*\.?\d*$/.test(value)) {
+                        setCostPriceInput(value)
+                        // Update form value when valid number
+                        if (value === "") {
+                          setProductForm(prev => ({ ...prev, cost_price: 0 }))
+                        } else {
+                          const numValue = parseFloat(value)
+                          if (!isNaN(numValue) && numValue >= 0) {
+                            setProductForm(prev => ({ ...prev, cost_price: numValue }))
+                          }
+                        }
+                      }
+                    }}
+                    onBlur={(e) => {
+                      // Normalize on blur - ensure it's a valid number
+                      const value = e.target.value.trim()
+                      if (value === "" || value === ".") {
+                        setCostPriceInput("")
+                        setProductForm(prev => ({ ...prev, cost_price: 0 }))
+                      } else {
+                        const numValue = parseFloat(value)
+                        if (!isNaN(numValue) && numValue >= 0) {
+                          const formatted = numValue.toString()
+                          setCostPriceInput(formatted)
+                          setProductForm(prev => ({ ...prev, cost_price: numValue }))
+                        }
+                      }
                     }}
                     placeholder="0.00"
                     className={formErrors.cost_price ? "border-red-500" : ""}
@@ -1230,11 +1275,38 @@ export default function InventoryModule() {
                   <Input
                     id="sale_price"
                     type="text"
-                    value={productForm.sale_price || ""}
+                    inputMode="decimal"
+                    value={salePriceInput}
                     onChange={(e) => {
-                      const value = e.target.value.replace(/[^0-9.]/g, '')
-                      const numValue = value === "" ? 0 : parseFloat(value) || 0
-                      setProductForm(prev => ({ ...prev, sale_price: numValue }))
+                      const value = e.target.value
+                      // Allow empty string, numbers, and one decimal point
+                      if (value === "" || /^\d*\.?\d*$/.test(value)) {
+                        setSalePriceInput(value)
+                        // Update form value when valid number
+                        if (value === "") {
+                          setProductForm(prev => ({ ...prev, sale_price: 0 }))
+                        } else {
+                          const numValue = parseFloat(value)
+                          if (!isNaN(numValue) && numValue >= 0) {
+                            setProductForm(prev => ({ ...prev, sale_price: numValue }))
+                          }
+                        }
+                      }
+                    }}
+                    onBlur={(e) => {
+                      // Normalize on blur - ensure it's a valid number
+                      const value = e.target.value.trim()
+                      if (value === "" || value === ".") {
+                        setSalePriceInput("")
+                        setProductForm(prev => ({ ...prev, sale_price: 0 }))
+                      } else {
+                        const numValue = parseFloat(value)
+                        if (!isNaN(numValue) && numValue >= 0) {
+                          const formatted = numValue.toString()
+                          setSalePriceInput(formatted)
+                          setProductForm(prev => ({ ...prev, sale_price: numValue }))
+                        }
+                      }
                     }}
                     placeholder="0.00"
                     className={formErrors.sale_price ? "border-red-500" : ""}
