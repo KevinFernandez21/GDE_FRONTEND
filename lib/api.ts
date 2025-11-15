@@ -76,8 +76,12 @@ class ApiClient {
     const abortController = new AbortController()
     let timeoutId: ReturnType<typeof setTimeout> | null = null
     
+    // OPTIMIZED: Increase timeout for heavy endpoints (dashboard, alerts)
+    const isHeavyEndpoint = endpoint.includes('/realtime-metrics') || endpoint.includes('/alerts')
+    const timeoutMs = isHeavyEndpoint ? 60000 : 30000 // 60s for heavy endpoints, 30s for others
+    
     try {
-      timeoutId = setTimeout(() => abortController.abort(), 30000) // 30 second timeout
+      timeoutId = setTimeout(() => abortController.abort(), timeoutMs)
       
       const response = await fetch(url, {
         ...options,

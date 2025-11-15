@@ -64,7 +64,7 @@ export default function Header({ onOpenTutorial, showTutorialButton = false }: H
   const moduleInfo = getModuleInfo()
 
   return (
-    <div className="bg-white border-b border-slate-200 px-4 sm:px-6 py-4">
+    <div className="bg-white border-b border-slate-200 px-4 sm:px-6 py-4 relative z-10">
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 lg:gap-4 min-w-0 flex-1">
           {/* Menu toggle button */}
@@ -105,56 +105,92 @@ export default function Header({ onOpenTutorial, showTutorialButton = false }: H
             </Button>
           )}
           <NotificationBell />
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="hidden sm:flex">
-                <Avatar className="w-6 h-6 mr-2">
-                  <AvatarImage src="/placeholder.svg" />
-                  <AvatarFallback>
-                    {(user?.full_name || user?.username)
-                      ? (user.full_name || user.username).split(" ")
-                          .map((n) => n[0])
-                          .join("")
-                      : "U"}
-                  </AvatarFallback>
-                </Avatar>
-                <span className="hidden md:inline">{user?.full_name || user?.username}</span>
-                <ChevronDown className="w-4 h-4 ml-2" />
-              </Button>
-            </DropdownMenuTrigger>
-            {/* Mobile user button */}
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="sm:hidden p-2">
-                <Avatar className="w-8 h-8">
-                  <AvatarImage src="/placeholder.svg" />
-                  <AvatarFallback>
-                    {(user?.full_name || user?.username)
-                      ? (user.full_name || user.username).split(" ")
-                          .map((n) => n[0])
-                          .join("")
-                      : "U"}
-                  </AvatarFallback>
-                </Avatar>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Mi Cuenta</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleViewProfile} className="cursor-pointer">
-                <User className="w-4 h-4 mr-2" />
-                Ver Perfil
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleSettings} className="cursor-pointer">
-                <Settings className="w-4 h-4 mr-2" />
-                Configuración
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-red-600">
-                <LogOut className="w-4 h-4 mr-2" />
-                Cerrar Sesión
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {/* Desktop dropdown */}
+          <div className="relative">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="hidden sm:flex">
+                  <Avatar className="w-6 h-6 mr-2">
+                    <AvatarImage src="/placeholder.svg" />
+                    <AvatarFallback>
+                      {(user?.full_name || user?.username)
+                        ? (user.full_name || user.username).split(" ")
+                            .map((n) => n[0])
+                            .join("")
+                        : "U"}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="hidden md:inline">{user?.full_name || user?.username}</span>
+                  <ChevronDown className="w-4 h-4 ml-2" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent 
+                align="end" 
+                side="bottom" 
+                sideOffset={5}
+                alignOffset={0}
+                className="w-56"
+              >
+                <DropdownMenuLabel>Mi Cuenta</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleViewProfile} className="cursor-pointer">
+                  <User className="w-4 h-4 mr-2" />
+                  Ver Perfil
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleSettings} className="cursor-pointer">
+                  <Settings className="w-4 h-4 mr-2" />
+                  Configuración
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-red-600">
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Cerrar Sesión
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+          {/* Mobile dropdown */}
+          <div className="relative">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="sm:hidden p-2">
+                  <Avatar className="w-8 h-8">
+                    <AvatarImage src="/placeholder.svg" />
+                    <AvatarFallback>
+                      {(user?.full_name || user?.username)
+                        ? (user.full_name || user.username).split(" ")
+                            .map((n) => n[0])
+                            .join("")
+                        : "U"}
+                    </AvatarFallback>
+                  </Avatar>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent 
+                align="end" 
+                side="bottom" 
+                sideOffset={5}
+                alignOffset={0}
+                className="w-56"
+              >
+                <DropdownMenuLabel>Mi Cuenta</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleViewProfile} className="cursor-pointer">
+                  <User className="w-4 h-4 mr-2" />
+                  Ver Perfil
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleSettings} className="cursor-pointer">
+                  <Settings className="w-4 h-4 mr-2" />
+                  Configuración
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-red-600">
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Cerrar Sesión
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       </div>
       

@@ -172,7 +172,9 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
     return () => clearInterval(interval)
   }, [])
 
-  // Fetch real stock alerts from backend
+  // PAUSED: Fetch real stock alerts from backend
+  // Temporarily disabled to reduce load and timeout issues
+  /*
   useEffect(() => {
     let isMounted = true
     const processedAlertIds = new Set<string>()
@@ -253,6 +255,7 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
       clearInterval(stockAlertInterval)
     }
   }, [addNotification])
+  */
 
   const value: NotificationContextType = {
     notifications,

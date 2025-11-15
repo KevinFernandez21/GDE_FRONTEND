@@ -53,9 +53,28 @@ export default function ProductQRScanner() {
 
   const startScanning = async () => {
     try {
-      if (!videoRef.current) return
+      // Esperar un momento para asegurar que el elemento video esté en el DOM
+      await new Promise(resolve => setTimeout(resolve, 100))
+      
+      if (!videoRef.current) {
+        console.error('[QR Scanner] Video element no disponible después de esperar')
+        toast.error("Error: No se pudo acceder al elemento de video. Por favor, recarga la página.")
+        return
+      }
 
       setError(null)
+      setIsScanning(true) // Cambiar el estado primero para que el video se renderice
+      
+      // Esperar un frame más para que React actualice el DOM
+      await new Promise(resolve => requestAnimationFrame(resolve))
+      
+      if (!videoRef.current) {
+        console.error('[QR Scanner] Video element aún no disponible')
+        setIsScanning(false)
+        toast.error("Error: No se pudo inicializar el video. Por favor, intenta de nuevo.")
+        return
+      }
+
       qrScannerRef.current = new QrScanner(
         videoRef.current,
         async (result) => {
@@ -70,10 +89,10 @@ export default function ProductQRScanner() {
       )
 
       await qrScannerRef.current.start()
-      setIsScanning(true)
       toast.success("Cámara activada - Escanea un código QR")
     } catch (error) {
-      console.error('Error starting camera:', error)
+      console.error('[QR Scanner] Error starting camera:', error)
+      setIsScanning(false)
       const errorMessage = error instanceof Error ? error.message : 'Error al acceder a la cámara'
       setError(errorMessage)
       toast.error(errorMessage)
@@ -92,27 +111,38 @@ export default function ProductQRScanner() {
   const handleQRScanned = async (code: string) => {
     if (!code || code.trim() === '') return
 
-    // Evitar múltiples escaneos del mismo código en poco tiempo
-    if (scannedProduct && scannedProduct.code === code && scannedProduct.sku === code) {
+    // Evitar múltiples escaneos del mismo código en poco tiempo (debounce)
+    const trimmedCode = code.trim()
+    if (scannedProduct && (scannedProduct.code === trimmedCode || scannedProduct.sku === trimmedCode)) {
+      console.log('[QR Scanner] Código ya escaneado, ignorando...')
       return
+    }
+
+    // Detener el escáner temporalmente mientras procesamos
+    if (qrScannerRef.current) {
+      qrScannerRef.current.stop()
     }
 
     setIsLoading(true)
     setError(null)
 
     try {
+      console.log('[QR Scanner] Buscando producto con código:', trimmedCode)
+      
       // Buscar producto por código/SKU/barcode
-      const response = await apiClient.searchProductByCode(code.trim())
+      const response = await apiClient.searchProductByCode(trimmedCode)
+      
+      console.log('[QR Scanner] Respuesta del servidor:', response)
       
       // Handle both response formats: {data: {...}} or direct product object
       const product = response.data || response
       
-      if (product && product.id) {
+      if (product && (product.id || product.code || product.sku)) {
         const productData: ScannedProduct = {
-          id: product.id,
-          code: product.code || product.sku || code,
-          sku: product.sku || product.code,
-          name: product.name,
+          id: product.id || '',
+          code: product.code || product.sku || trimmedCode,
+          sku: product.sku || product.code || trimmedCode,
+          name: product.name || 'Producto sin nombre',
           sale_price: product.sale_price || product.price || 0,
           cost_price: product.cost_price || product.cost || 0,
           current_stock: product.current_stock || 0,
@@ -127,19 +157,34 @@ export default function ProductQRScanner() {
         
         // Agregar al historial (máximo 10)
         setScanHistory(prev => {
-          const newHistory = [productData, ...prev.filter(p => p.id !== productData.id)]
+          const newHistory = [productData, ...prev.filter(p => p.id !== productData.id && p.code !== productData.code)]
           return newHistory.slice(0, 10)
         })
         
         toast.success(`Producto encontrado: ${productData.name}`)
+        
+        // Reiniciar el escáner después de un breve delay para permitir otro escaneo
+        setTimeout(() => {
+          if (qrScannerRef.current && isScanning) {
+            qrScannerRef.current.start()
+          }
+        }, 1000)
       } else {
         throw new Error("Producto no encontrado")
       }
     } catch (error: any) {
-      const errorMessage = error.response?.data?.detail || error.message || "Producto no encontrado"
-      setError(errorMessage)
+      console.error('[QR Scanner] Error:', error)
+      const errorMessage = error.error || error.response?.data?.detail || error.message || "Producto no encontrado"
+      setError(`No se encontró producto con código: ${trimmedCode}`)
       setScannedProduct(null)
-      toast.error(`No se encontró producto con código: ${code}`)
+      toast.error(`No se encontró producto con código: ${trimmedCode}`)
+      
+      // Reiniciar el escáner después del error
+      setTimeout(() => {
+        if (qrScannerRef.current && isScanning) {
+          qrScannerRef.current.start()
+        }
+      }, 2000)
     } finally {
       setIsLoading(false)
     }
@@ -200,32 +245,35 @@ export default function ProductQRScanner() {
               </div>
             </div>
 
-            {/* Camera Video */}
-            {isScanning && (
-              <div className="relative bg-black rounded-lg overflow-hidden">
-                <video
-                  ref={videoRef}
-                  className="w-full h-64 sm:h-96 object-cover"
-                  playsInline
-                  muted
-                />
-                <div className="absolute inset-0 border-4 border-blue-500 border-dashed pointer-events-none">
-                  <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
-                    <div className="bg-blue-500/20 backdrop-blur-sm px-4 py-2 rounded-lg">
-                      <p className="text-white text-sm font-medium">Enfoca el código QR aquí</p>
+            {/* Camera Video - Siempre renderizado pero oculto cuando no está escaneando */}
+            <div className={`relative bg-black rounded-lg overflow-hidden ${isScanning ? '' : 'hidden'}`}>
+              <video
+                ref={videoRef}
+                className="w-full h-64 sm:h-96 object-cover"
+                playsInline
+                muted
+                autoPlay
+              />
+              {isScanning && (
+                <>
+                  <div className="absolute inset-0 border-4 border-blue-500 border-dashed pointer-events-none">
+                    <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+                      <div className="bg-blue-500/20 backdrop-blur-sm px-4 py-2 rounded-lg">
+                        <p className="text-white text-sm font-medium">Enfoca el código QR aquí</p>
+                      </div>
                     </div>
                   </div>
-                </div>
-                {isLoading && (
-                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                    <div className="bg-white rounded-lg p-4 flex items-center gap-3">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-                      <p className="text-sm font-medium">Buscando producto...</p>
+                  {isLoading && (
+                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                      <div className="bg-white rounded-lg p-4 flex items-center gap-3">
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                        <p className="text-sm font-medium">Buscando producto...</p>
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
-            )}
+                  )}
+                </>
+              )}
+            </div>
 
             {/* Error Message */}
             {error && (
@@ -267,19 +315,54 @@ export default function ProductQRScanner() {
                 </Button>
               </div>
 
-              {/* Product Info Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* SKU/Code */}
-                <div className="bg-blue-50 p-4 rounded-lg">
+              {/* Product Info Grid - SKU, Stock y Cantidad destacados */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* SKU/Code - Destacado */}
+                <div className="bg-blue-50 p-4 rounded-lg border-2 border-blue-200">
                   <div className="flex items-center gap-2 mb-2">
                     <Package className="w-5 h-5 text-blue-600" />
-                    <span className="text-sm font-medium text-gray-600">SKU / Código</span>
+                    <span className="text-sm font-medium text-gray-600">SKU</span>
                   </div>
                   <p className="text-2xl font-bold text-blue-900 font-mono">
-                    {scannedProduct.code || scannedProduct.sku || 'N/A'}
+                    {scannedProduct.sku || scannedProduct.code || 'N/A'}
                   </p>
                 </div>
 
+                {/* Stock Actual - Destacado */}
+                <div className="bg-purple-50 p-4 rounded-lg border-2 border-purple-200">
+                  <div className="flex items-center gap-2 mb-2">
+                    <TrendingUp className="w-5 h-5 text-purple-600" />
+                    <span className="text-sm font-medium text-gray-600">Stock Actual</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <p className="text-3xl font-bold text-purple-900">
+                      {scannedProduct.current_stock}
+                    </p>
+                    <Badge variant={getStockStatus(scannedProduct.current_stock, scannedProduct.min_stock).variant}>
+                      {getStockStatus(scannedProduct.current_stock, scannedProduct.min_stock).label}
+                    </Badge>
+                  </div>
+                </div>
+
+                {/* Cantidad de Productos (Total en inventario) */}
+                <div className="bg-orange-50 p-4 rounded-lg border-2 border-orange-200">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Package className="w-5 h-5 text-orange-600" />
+                    <span className="text-sm font-medium text-gray-600">Cantidad</span>
+                  </div>
+                  <p className="text-3xl font-bold text-orange-900">
+                    {scannedProduct.current_stock} unidades
+                  </p>
+                  {scannedProduct.min_stock && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Mínimo: {scannedProduct.min_stock}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Precio y Nombre del Producto */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                 {/* Price */}
                 <div className="bg-green-50 p-4 rounded-lg">
                   <div className="flex items-center gap-2 mb-2">
@@ -291,24 +374,8 @@ export default function ProductQRScanner() {
                   </p>
                 </div>
 
-                {/* Stock */}
-                <div className="bg-purple-50 p-4 rounded-lg">
-                  <div className="flex items-center gap-2 mb-2">
-                    <TrendingUp className="w-5 h-5 text-purple-600" />
-                    <span className="text-sm font-medium text-gray-600">Stock Actual</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <p className="text-2xl font-bold text-purple-900">
-                      {scannedProduct.current_stock}
-                    </p>
-                    <Badge variant={getStockStatus(scannedProduct.current_stock, scannedProduct.min_stock).variant}>
-                      {getStockStatus(scannedProduct.current_stock, scannedProduct.min_stock).label}
-                    </Badge>
-                  </div>
-                </div>
-
                 {/* Product Name */}
-                <div className="bg-slate-50 p-4 rounded-lg md:col-span-2">
+                <div className="bg-slate-50 p-4 rounded-lg">
                   <div className="flex items-center gap-2 mb-2">
                     <Package className="w-5 h-5 text-slate-600" />
                     <span className="text-sm font-medium text-gray-600">Nombre del Producto</span>
