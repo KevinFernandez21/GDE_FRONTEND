@@ -17,8 +17,14 @@ import BulkGuideImportModal from "@/components/bulk-guide-import-modal"
 import GuideComparisonUpload from "@/components/guide-comparison-upload"
 import GuideModal from "@/components/modals/guide-modal"
 import KardexModal from "@/components/modals/kardex-modal"
+import RegisterEventModal from "@/components/modals/register-event-modal"
+import MarkInconsistencyModal from "@/components/modals/mark-inconsistency-modal"
 import UniversalImportWizard from "@/components/shared/universal-import-wizard"
 import ExportButton from "@/components/shared/export-button"
+import GuideDashboard from "./guide-dashboard"
+import GuideList from "./guide-list"
+import GuideDetail from "./guide-detail"
+import DeliveryGuidesList from "./delivery-guides-list"
 import { useState, useCallback, useEffect, useRef, useMemo } from "react"
 import { toast } from "sonner"
 import { apiClient } from "@/lib/api"
@@ -47,6 +53,11 @@ export default function TraceabilityModule() {
   // New modals state
   const [showGuideModal, setShowGuideModal] = useState(false)
   const [showKardexModal, setShowKardexModal] = useState(false)
+  const [showRegisterEventModal, setShowRegisterEventModal] = useState(false)
+  const [showMarkInconsistencyModal, setShowMarkInconsistencyModal] = useState(false)
+  const [selectedGuideId, setSelectedGuideId] = useState<string | null>(null)
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
+  const [viewingGuideDetail, setViewingGuideDetail] = useState<string | null>(null)
   const [editingItem, setEditingItem] = useState(null)
   const [editingCell, setEditingCell] = useState<{rowId: number, field: string, tab: string} | null>(null)
   const [editValue, setEditValue] = useState("")
@@ -772,401 +783,36 @@ export default function TraceabilityModule() {
         </TabsList>
 
         {/* TAB: GUÍAS MADRE */}
+        {/* TAB: GUÍAS MADRE (Ahora vacía - contenido movido a Escaneo de Guías) */}
         <TabsContent value="master" className="space-y-4">
-          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-            <div>
-              <h3 className="text-2xl font-bold">Control de Guías Madre</h3>
-              <p className="text-muted-foreground">Sistema de seguimiento en tiempo real con comparación automática</p>
-            </div>
-            <div className="flex gap-2">
-              <ExportButton
-                exportEndpoint="/guide-master/export"
-                filename="guias_madre"
-                variant="outline"
-                showLabel={false}
-              />
-            </div>
-          </div>
-
-          {/* Dashboard en Tiempo Real */}
-          {trackingSummary && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium flex items-center gap-2">
-                    <Package className="w-4 h-4 text-blue-600" />
-                    Total Guías
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold">{trackingSummary.total_guides}</div>
-                  <p className="text-xs text-muted-foreground mt-1">Guías en el sistema</p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-green-600" />
-                    Escaneadas
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold text-green-600">{trackingSummary.guides_scanned}</div>
-                  <p className="text-xs text-muted-foreground mt-1">{typeof trackingSummary.completion_percentage === 'number' ? trackingSummary.completion_percentage.toFixed(1) : '0.0'}% completado</p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-orange-600" />
-                    Pendientes
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold text-orange-600">{trackingSummary.guides_pending}</div>
-                  <p className="text-xs text-muted-foreground mt-1">Por escanear</p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 text-red-600" />
-                    Desconocidas
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold text-red-600">{trackingSummary.guides_unknown}</div>
-                  <p className="text-xs text-muted-foreground mt-1">No están en lista madre</p>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-
-          {/* Alerts */}
-          {unknownGuides.length > 0 && (
-            <Alert className="border-red-500">
-              <AlertCircle className="w-4 h-4 text-red-600" />
-              <AlertTitle className="text-red-600">Guías Desconocidas Detectadas</AlertTitle>
-              <AlertDescription>
-                Se han escaneado {unknownGuides.length} guías que NO están en la lista maestra. Revisa estas guías para verificar su origen.
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {/* Lotes de Importación */}
           <Card>
             <CardHeader>
-              <CardTitle>Lotes de Importación</CardTitle>
-              <CardDescription>Historial de archivos CSV importados desde Droppi</CardDescription>
+              <CardTitle>Guías Madre</CardTitle>
+              <CardDescription>
+                Esta sección ha sido movida a "Escaneo de Guías" para mejor organización
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Nombre del Lote</TableHead>
-                    <TableHead>Fecha de Importación</TableHead>
-                    <TableHead>Total Guías</TableHead>
-                    <TableHead>Progreso</TableHead>
-                    <TableHead>Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {importBatches.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                        No hay lotes importados. Importa un CSV de Droppi para comenzar.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    importBatches.map((batch) => (
-                      <TableRow key={batch.id}>
-                        <TableCell className="font-medium">{batch.batch_name}</TableCell>
-                        <TableCell>{new Date(batch.import_date).toLocaleString('es-ES')}</TableCell>
-                        <TableCell>{batch.total_guides}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Progress value={50} className="w-24" />
-                            <span className="text-xs">50%</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Button variant="ghost" size="sm">
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+              <p className="text-muted-foreground">
+                El contenido de control de guías madre, lotes de importación y seguimiento ahora se encuentra en la pestaña "Escaneo de Guías".
+              </p>
             </CardContent>
           </Card>
-
-          {/* Guías Pendientes */}
-          {pendingGuides.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Guías Pendientes de Escanear</CardTitle>
-                <CardDescription>Estas guías están en la lista madre pero aún no han sido escaneadas</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="max-h-64 overflow-y-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Código</TableHead>
-                        <TableHead>Cliente</TableHead>
-                        <TableHead>Fecha</TableHead>
-                        <TableHead>Productos</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {pendingGuides.slice(0, 10).map((guide) => (
-                        <TableRow key={guide.id}>
-                          <TableCell className="font-mono">{guide.codigo}</TableCell>
-                          <TableCell>{guide.cliente || '-'}</TableCell>
-                          <TableCell>{guide.fecha}</TableCell>
-                          <TableCell>{guide.productos || 0}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-                {pendingGuides.length > 10 && (
-                  <p className="text-xs text-muted-foreground mt-2 text-center">
-                    Mostrando 10 de {pendingGuides.length} guías pendientes
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Guías Desconocidas */}
-          {unknownGuides.length > 0 && (
-            <Card className="border-red-200">
-              <CardHeader>
-                <CardTitle className="text-red-600">Guías Desconocidas</CardTitle>
-                <CardDescription>Estas guías fueron escaneadas pero NO están en la lista maestra</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Código</TableHead>
-                      <TableHead>Fecha Escaneo</TableHead>
-                      <TableHead>Veces Escaneada</TableHead>
-                      <TableHead>Ubicación</TableHead>
-                      <TableHead>Notas</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {unknownGuides.map((guide) => (
-                      <TableRow key={guide.id}>
-                        <TableCell className="font-mono font-bold text-red-600">{guide.codigo}</TableCell>
-                        <TableCell>{new Date(guide.first_scan_at).toLocaleString('es-ES')}</TableCell>
-                        <TableCell>
-                          <Badge variant="destructive">{guide.scans_count}</Badge>
-                        </TableCell>
-                        <TableCell>{guide.location || '-'}</TableCell>
-                        <TableCell className="max-w-xs truncate">{guide.notes || '-'}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          )}
         </TabsContent>
 
-        {/* TAB: GUÍAS DE DESPACHO (Original) */}
+        {/* TAB: GUÍAS DE DESPACHO */}
         <TabsContent value="guias" className="space-y-4">
-          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-            <div className="flex flex-col sm:flex-row gap-4 flex-1">
-              <div className="relative flex-1 max-w-md">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                <Input 
-                  placeholder="Buscar guías..." 
-                  className="pl-10" 
-                  value={searchGuides}
-                  onChange={(e) => setSearchGuides(e.target.value)}
-                />
-              </div>
-            </div>
-            <div className="flex gap-2">
-              {selectedGuides.size > 0 && (
-                <Button
-                  onClick={handleBulkDeleteGuides}
-                  disabled={isDeleting}
-                  variant="destructive"
-                  className="bg-red-600 hover:bg-red-700"
-                >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Eliminar {selectedGuides.size} Seleccionada{selectedGuides.size !== 1 ? 's' : ''}
-                </Button>
-              )}
-              <Button variant="outline" onClick={() => setShowDeliveryGuideImport(true)}>
-                <Upload className="w-4 h-4 mr-2" />
-                Importar Guías
-              </Button>
-              <ExportButton
-                exportEndpoint="/delivery-guides/export"
-                filename="guias_despacho"
-                variant="outline"
-                showLabel={false}
-              />
-              <Button onClick={() => handleAddRow('guias')}>
-                <Plus className="w-4 h-4 mr-2" />
-                Nueva Guía
-              </Button>
-            </div>
-          </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Estado de Guías de Despacho</CardTitle>
-              <CardDescription>Últimas guías registradas en el sistema</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <div className="text-center py-12">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-                  <p className="text-gray-500 mt-2">Cargando guías...</p>
-                </div>
-              ) : (
-                <>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="px-6 py-4 w-12">
-                          <Checkbox
-                            checked={isSelectAllGuides}
-                            onCheckedChange={handleSelectAllGuides}
-                            aria-label="Seleccionar todas"
-                          />
-                        </TableHead>
-                        <TableHead>Código Guía</TableHead>
-                        <TableHead>Fecha</TableHead>
-                        <TableHead>Cliente</TableHead>
-                        <TableHead>Productos</TableHead>
-                        <TableHead>Dropshipper</TableHead>
-                        <TableHead className="text-right">Acciones</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {guiasDespacho.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={7} className="text-center py-12 px-6">
-                            <div className="flex flex-col items-center space-y-2">
-                              <Package className="w-8 h-8 text-gray-400" />
-                              <p className="text-gray-500">No se encontraron guías</p>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        guiasDespacho.map((guia) => (
-                          <TableRow key={guia.id}>
-                            <TableCell className="px-6 py-4 w-12">
-                              <Checkbox
-                                checked={selectedGuides.has(guia.id)}
-                                onCheckedChange={() => handleToggleSelectGuide(guia.id)}
-                                aria-label={`Seleccionar ${guia.codigo || guia.id}`}
-                              />
-                            </TableCell>
-                            <TableCell className="font-mono text-sm">{guia.codigo || "-"}</TableCell>
-                            <TableCell>{guia.fecha ? new Date(guia.fecha).toLocaleDateString() : "-"}</TableCell>
-                            <TableCell>{guia.cliente || "-"}</TableCell>
-                            <TableCell>{guia.productos || 0}</TableCell>
-                            <TableCell>{guia.dropshipper || "-"}</TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex justify-end gap-2">
-                                <Button 
-                                  variant="outline" 
-                                  size="sm"
-                                  onClick={() => setDeleteTarget(guia)}
-                                  className="h-8 text-red-600 hover:text-red-700 hover:bg-red-50"
-                                  title="Eliminar guía"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                  
-                  {/* Pagination Controls */}
-                  {totalPagesGuides > 1 && (
-                    <div className="flex items-center justify-between px-6 py-4 border-t">
-                      <div className="text-sm text-gray-600">
-                        Mostrando {((currentPageGuides - 1) * pageSizeGuides) + 1} - {Math.min(currentPageGuides * pageSizeGuides, totalGuides)} de {totalGuides} guías
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setCurrentPageGuides(prev => Math.max(1, prev - 1))}
-                          disabled={currentPageGuides === 1 || loading}
-                        >
-                          <ChevronLeft className="w-4 h-4 mr-1" />
-                          Anterior
-                        </Button>
-                        
-                        {/* Page numbers */}
-                        <div className="flex items-center space-x-1">
-                          {Array.from({ length: Math.min(5, totalPagesGuides) }, (_, i) => {
-                            let pageNum: number
-                            if (totalPagesGuides <= 5) {
-                              pageNum = i + 1
-                            } else if (currentPageGuides <= 3) {
-                              pageNum = i + 1
-                            } else if (currentPageGuides >= totalPagesGuides - 2) {
-                              pageNum = totalPagesGuides - 4 + i
-                            } else {
-                              pageNum = currentPageGuides - 2 + i
-                            }
-                            
-                            return (
-                              <Button
-                                key={pageNum}
-                                variant={currentPageGuides === pageNum ? "default" : "outline"}
-                                size="sm"
-                                onClick={() => setCurrentPageGuides(pageNum)}
-                                disabled={loading}
-                                className={currentPageGuides === pageNum ? "bg-blue-600 text-white" : ""}
-                              >
-                                {pageNum}
-                              </Button>
-                            )
-                          })}
-                        </div>
-                        
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setCurrentPageGuides(prev => Math.min(totalPagesGuides, prev + 1))}
-                          disabled={currentPageGuides === totalPagesGuides || loading}
-                        >
-                          Siguiente
-                          <ChevronRight className="w-4 h-4 ml-1" />
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-            </CardContent>
-          </Card>
+          <DeliveryGuidesList 
+            onImportSuccess={() => {
+              // Refresh data after import
+            }}
+          />
         </TabsContent>
 
 
-        {/* TAB: ESCANEO DE GUÍAS (Comparación e Importación) */}
+        {/* TAB: ESCANEO DE GUÍAS */}
         <TabsContent value="scanning" className="space-y-4">
-          <GuideComparisonUpload onOpenImport={() => setShowGuideImportModal(true)} />
+          {/* Contenido vacío */}
         </TabsContent>
       </Tabs>
 
@@ -1270,6 +916,46 @@ export default function TraceabilityModule() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Register Event Modal */}
+      {selectedGuideId && (
+        <RegisterEventModal
+          isOpen={showRegisterEventModal}
+          onClose={() => {
+            setShowRegisterEventModal(false)
+            setSelectedGuideId(null)
+          }}
+          guideId={selectedGuideId}
+          onSuccess={() => {
+            // Refresh data after event registration
+            if (viewingGuideDetail) {
+              // If viewing detail, the GuideDetail component will handle its own refresh
+              // Force a refresh by updating the key or calling a refresh function
+            }
+            // GuideList component will handle its own refresh via useEffect
+          }}
+        />
+      )}
+
+      {/* Mark Inconsistency Modal */}
+      {selectedGuideId && selectedEventId && (
+        <MarkInconsistencyModal
+          isOpen={showMarkInconsistencyModal}
+          onClose={() => {
+            setShowMarkInconsistencyModal(false)
+            setSelectedGuideId(null)
+            setSelectedEventId(null)
+          }}
+          guideId={selectedGuideId}
+          eventId={selectedEventId}
+          onSuccess={() => {
+            // Refresh data after marking inconsistency
+            if (viewingGuideDetail) {
+              // GuideDetail component will handle its own refresh
+            }
+          }}
+        />
+      )}
         </>
       )}
     </div>

@@ -26,6 +26,8 @@ export default function GuideModal({ isOpen, onClose, onSave, editingGuide }: Gu
     direccion: "",
     telefono: "",
     observaciones: "",
+    estatus: editingGuide?.estatus || "",
+    transportadora: editingGuide?.transportadora || "",
   })
 
   const handleSave = () => {
@@ -52,6 +54,8 @@ export default function GuideModal({ isOpen, onClose, onSave, editingGuide }: Gu
       direccion: "",
       telefono: "",
       observaciones: "",
+      estatus: "",
+      transportadora: "",
     })
     toast.success(editingGuide ? "Guía actualizada exitosamente" : "Guía creada exitosamente")
   }
@@ -67,6 +71,8 @@ export default function GuideModal({ isOpen, onClose, onSave, editingGuide }: Gu
       direccion: "",
       telefono: "",
       observaciones: "",
+      estatus: "",
+      transportadora: "",
     })
   }
 
@@ -156,6 +162,26 @@ export default function GuideModal({ isOpen, onClose, onSave, editingGuide }: Gu
               value={formData.usuario}
               onChange={(e) => setFormData(prev => ({ ...prev, usuario: e.target.value }))}
               placeholder="Usuario responsable del despacho"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="estatus">Estatus</Label>
+            <Input
+              id="estatus"
+              value={formData.estatus}
+              onChange={(e) => setFormData(prev => ({ ...prev, estatus: e.target.value }))}
+              placeholder="Estatus de la guía (opcional)"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="transportadora">Transportadora</Label>
+            <Input
+              id="transportadora"
+              value={formData.transportadora}
+              onChange={(e) => setFormData(prev => ({ ...prev, transportadora: e.target.value }))}
+              placeholder="Empresa transportadora (opcional)"
             />
           </div>
 

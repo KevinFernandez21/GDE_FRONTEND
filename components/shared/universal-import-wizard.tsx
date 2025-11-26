@@ -327,6 +327,57 @@ export default function UniversalImportWizard({
     }
   }
 
+  // Normalize column name for comparison
+  const normalizeColumnName = (colName: string): string => {
+    return colName.toLowerCase()
+      .replace(/\s+/g, '')
+      .replace(/[_-]/g, '')
+      .replace(/á/g, 'a')
+      .replace(/é/g, 'e')
+      .replace(/í/g, 'i')
+      .replace(/ó/g, 'o')
+      .replace(/ú/g, 'u')
+      .replace(/ñ/g, 'n')
+  }
+
+  // Get relevant columns for delivery guides
+  const getRelevantColumns = (allColumns: string[]): { relevant: string[], omitted: string[] } => {
+    if (importType !== 'delivery_guides') {
+      return { relevant: allColumns, omitted: [] }
+    }
+
+    // Columnas relevantes que el usuario pidió
+    const relevantColumnNames = [
+      'numero guia', 'numero guía', 'numeroguia', 'numeroguía', 'numero_guia', 'numero_guía',
+      'codigo', 'código', 'guide_number', 'guianumber',
+      'estatus', 'status', 'estado',
+      'transportadora', 'courier', 'carrier', 'empresa_transporte',
+      'producto id', 'productoid', 'product_id', 'producto_id', 'id_producto',
+      'sku',
+      'producto', 'product_name', 'nombre_producto',
+      'cantidad', 'quantity', 'qty'
+    ]
+
+    const relevant: string[] = []
+    const omitted: string[] = []
+
+    allColumns.forEach(col => {
+      const normalized = normalizeColumnName(col)
+      const isRelevant = relevantColumnNames.some(relCol => 
+        normalized.includes(normalizeColumnName(relCol)) || 
+        normalizeColumnName(relCol).includes(normalized)
+      )
+      
+      if (isRelevant) {
+        relevant.push(col)
+      } else {
+        omitted.push(col)
+      }
+    })
+
+    return { relevant, omitted }
+  }
+
   return (
     <div className="space-y-6 bg-white">
       {/* Progress Steps */}
@@ -550,31 +601,153 @@ export default function UniversalImportWizard({
           <Card className="border-0 shadow-sm">
             <CardHeader className="pb-4">
               <CardTitle className="text-lg font-semibold text-gray-900">Vista Previa (Primeras 10 Filas)</CardTitle>
+              {validation && validation.preview_data && validation.preview_data[0] && importType === 'delivery_guides' && (() => {
+                const { relevant, omitted } = getRelevantColumns(Object.keys(validation.preview_data[0]))
+                if (omitted.length > 0) {
+                  return (
+                    <Alert className="mt-4 border-yellow-200 bg-yellow-50">
+                      <Info className="w-4 h-4 text-yellow-600" />
+                      <AlertTitle className="text-yellow-800">Columnas omitidas</AlertTitle>
+                      <AlertDescription className="text-yellow-700 text-sm">
+                        Las siguientes columnas no se mostrarán en la vista previa (serán ignoradas en la importación):{' '}
+                        <span className="font-semibold">{omitted.join(', ')}</span>
+                      </AlertDescription>
+                    </Alert>
+                  )
+                }
+                return null
+              })()}
             </CardHeader>
-            <CardContent>
-              <div className="border rounded-lg overflow-hidden">
-                <ScrollArea className="h-[300px]">
-                  <Table>
-                    <TableHeader className="bg-gray-50">
-                      <TableRow>
-                        {validation.preview_data[0] && Object.keys(validation.preview_data[0]).map((key) => (
-                          <TableHead key={key} className="font-semibold text-gray-700">{key}</TableHead>
-                        ))}
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {validation.preview_data.map((row: any, idx: number) => (
-                        <TableRow key={idx} className="hover:bg-gray-50">
-                          {Object.values(row).map((value: any, cellIdx: number) => (
-                            <TableCell key={cellIdx} className="text-sm">
-                              {value !== null && value !== undefined ? String(value) : '-'}
-                            </TableCell>
-                          ))}
-                        </TableRow>
+            <CardContent className="p-0">
+              {/* Mobile: Card-based view */}
+              <div className="block md:hidden space-y-4 p-4">
+                {validation.preview_data.slice(0, 5).map((row: any, idx: number) => {
+                  const { relevant } = getRelevantColumns(Object.keys(row))
+                  const relevantEntries = Object.entries(row).filter(([key]) => relevant.includes(key))
+                  
+                  return (
+                    <div key={idx} className="border rounded-lg p-4 bg-gray-50 space-y-2">
+                      {relevantEntries.map(([key, value]: [string, any]) => (
+                        <div key={key} className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                          <span className="text-xs font-semibold text-gray-600 min-w-[120px]">{key}:</span>
+                          <span className="text-sm text-gray-900 break-words flex-1">
+                            {value !== null && value !== undefined ? String(value).substring(0, 50) + (String(value).length > 50 ? '...' : '') : '-'}
+                          </span>
+                        </div>
                       ))}
-                    </TableBody>
-                  </Table>
-                </ScrollArea>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Desktop: Table view with limited width and scroll */}
+              <div className="hidden md:block border rounded-lg overflow-hidden">
+                {validation.preview_data[0] && (() => {
+                  const { relevant } = getRelevantColumns(Object.keys(validation.preview_data[0]))
+                  
+                  return (
+                    <div className="w-full overflow-x-auto overflow-y-auto" style={{ maxHeight: '500px' }}>
+                      <Table className="min-w-full" style={{ width: 'auto' }}>
+                        <TableHeader className="bg-gray-50 sticky top-0 z-10">
+                          <TableRow>
+                            {relevant.map((key) => (
+                              <TableHead 
+                                key={key} 
+                                className="font-semibold text-gray-700 whitespace-nowrap px-3 py-2 text-xs"
+                                style={{ width: '150px', minWidth: '120px' }}
+                              >
+                                <div className="truncate" title={key}>
+                                  {key}
+                                </div>
+                              </TableHead>
+                            ))}
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {validation.preview_data.map((row: any, idx: number) => (
+                            <TableRow key={idx} className="hover:bg-gray-50">
+                              {relevant.map((key, cellIdx: number) => (
+                                <TableCell 
+                                  key={`${idx}-${cellIdx}`} 
+                                  className="text-xs px-3 py-2"
+                                  style={{ width: '150px', minWidth: '120px' }}
+                                >
+                                  <div 
+                                    className="truncate" 
+                                    title={row[key] !== null && row[key] !== undefined ? String(row[key]) : '-'}
+                                  >
+                                    {row[key] !== null && row[key] !== undefined ? String(row[key]) : '-'}
+                                  </div>
+                                </TableCell>
+                              ))}
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )
+                })()}
+                <div className="px-4 py-2 bg-gray-50 border-t text-xs text-gray-500 text-center">
+                  <span className="inline-flex items-center gap-1">
+                    <Info className="w-3 h-3" />
+                    Solo se muestran las columnas relevantes para la importación
+                  </span>
+                </div>
+              </div>
+
+              {/* Tablet: Compact table view */}
+              <div className="hidden sm:block md:hidden border rounded-lg overflow-hidden">
+                {validation.preview_data[0] && (() => {
+                  const { relevant } = getRelevantColumns(Object.keys(validation.preview_data[0]))
+                  
+                  return (
+                    <div className="w-full overflow-x-auto overflow-y-auto" style={{ maxHeight: '400px' }}>
+                      <Table className="min-w-full text-xs" style={{ width: 'auto' }}>
+                        <TableHeader className="bg-gray-50 sticky top-0 z-10">
+                          <TableRow>
+                            {relevant.map((key) => (
+                              <TableHead 
+                                key={key} 
+                                className="font-semibold text-gray-700 whitespace-nowrap px-2 py-1"
+                                style={{ width: '120px', minWidth: '100px' }}
+                              >
+                                <div className="truncate" title={key}>
+                                  {key}
+                                </div>
+                              </TableHead>
+                            ))}
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {validation.preview_data.map((row: any, idx: number) => (
+                            <TableRow key={idx} className="hover:bg-gray-50">
+                              {relevant.map((key, cellIdx: number) => (
+                                <TableCell 
+                                  key={`${idx}-${cellIdx}`} 
+                                  className="px-2 py-1"
+                                  style={{ width: '120px', minWidth: '100px' }}
+                                >
+                                  <div 
+                                    className="truncate" 
+                                    title={row[key] !== null && row[key] !== undefined ? String(row[key]) : '-'}
+                                  >
+                                    {row[key] !== null && row[key] !== undefined ? String(row[key]).substring(0, 30) + (String(row[key]).length > 30 ? '...' : '') : '-'}
+                                  </div>
+                                </TableCell>
+                              ))}
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )
+                })()}
+                <div className="px-4 py-2 bg-gray-50 border-t text-xs text-gray-500 text-center">
+                  <span className="inline-flex items-center gap-1">
+                    <Info className="w-3 h-3" />
+                    Solo se muestran las columnas relevantes para la importación
+                  </span>
+                </div>
               </div>
             </CardContent>
           </Card>
