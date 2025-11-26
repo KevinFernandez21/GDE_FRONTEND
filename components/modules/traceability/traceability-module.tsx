@@ -25,6 +25,7 @@ import GuideDashboard from "./guide-dashboard"
 import GuideList from "./guide-list"
 import GuideDetail from "./guide-detail"
 import DeliveryGuidesList from "./delivery-guides-list"
+import ScannedGuidesModule from "./scanned-guides-module"
 import { useState, useCallback, useEffect, useRef, useMemo } from "react"
 import { toast } from "sonner"
 import { apiClient } from "@/lib/api"
@@ -220,7 +221,7 @@ export default function TraceabilityModule() {
       
       // Create abort controller with timeout
       const abortController = new AbortController()
-      const timeoutId = setTimeout(() => abortController.abort(), 15000) // 15 second timeout
+      const timeoutId = setTimeout(() => abortController.abort(), 30000) // 30 second timeout (increased)
       
       try {
         const response = await fetch(`${baseUrl}/delivery-guides/?${params.toString()}`, {
@@ -284,7 +285,7 @@ export default function TraceabilityModule() {
       
       // Create abort controller with timeout
       const abortController = new AbortController()
-      const timeoutId = setTimeout(() => abortController.abort(), 15000) // 15 second timeout
+      const timeoutId = setTimeout(() => abortController.abort(), 30000) // 30 second timeout (increased)
       
       try {
         const response = await fetch(`${baseUrl}/kardex/?page=1&size=50`, {
@@ -339,7 +340,7 @@ export default function TraceabilityModule() {
       // Helper function to safely fetch with error handling
       const safeFetch = async (endpoint: string, errorLabel: string) => {
         const abortController = new AbortController()
-        const timeoutId = setTimeout(() => abortController.abort(), 10000) // 10 second timeout
+        const timeoutId = setTimeout(() => abortController.abort(), 30000) // 30 second timeout (increased)
         
         try {
           const url = `${baseUrl}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`
@@ -367,11 +368,13 @@ export default function TraceabilityModule() {
           clearTimeout(timeoutId)
           
           // Don't log network errors in console.error to avoid spam
+          // Only log if it's not a network/timeout error (backend might be down)
           if (error.name === 'AbortError') {
-            console.warn(`Request timeout for ${errorLabel}`)
+            // Silently handle timeout - backend might be slow or down
+            // console.warn(`Request timeout for ${errorLabel}`)
           } else if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
-            // Network error - backend might be down
-            console.warn(`Network error fetching ${errorLabel} - backend may be unavailable`)
+            // Network error - backend might be down, don't spam console
+            // console.warn(`Network error fetching ${errorLabel} - backend may be unavailable`)
           } else {
             console.warn(`Error fetching ${errorLabel}:`, error.message)
           }
@@ -416,7 +419,11 @@ export default function TraceabilityModule() {
   useEffect(() => {
     fetchGuiasDespacho(1, "") // Initial load
     fetchKardexData()
-    fetchGuideMasterData()
+    // Fetch guide master data asynchronously (non-blocking)
+    // This data is optional and shouldn't block the main UI
+    setTimeout(() => {
+      fetchGuideMasterData()
+    }, 1000) // Delay to let main data load first
 
     // OPTIMIZED: Auto-refresh tracking summary every 2 minutes (reduced from 30s to save quota)
     const interval = setInterval(() => {
@@ -783,21 +790,22 @@ export default function TraceabilityModule() {
         </TabsList>
 
         {/* TAB: GUÍAS MADRE */}
-        {/* TAB: GUÍAS MADRE (Ahora vacía - contenido movido a Escaneo de Guías) */}
         <TabsContent value="master" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Guías Madre</CardTitle>
-              <CardDescription>
-                Esta sección ha sido movida a "Escaneo de Guías" para mejor organización
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground">
-                El contenido de control de guías madre, lotes de importación y seguimiento ahora se encuentra en la pestaña "Escaneo de Guías".
-              </p>
-            </CardContent>
-          </Card>
+          <GuideList 
+            onViewDetail={(guideId) => setViewingGuideDetail(guideId)}
+            onRegisterEvent={(guideId) => {
+              setSelectedGuideId(guideId)
+              setShowRegisterEventModal(true)
+            }}
+            onMarkInconsistency={(guideId, eventId) => {
+              setSelectedGuideId(guideId)
+              setSelectedEventId(eventId || null)
+              setShowMarkInconsistencyModal(true)
+            }}
+            onImportSuccess={() => {
+              // Refresh data after import
+            }}
+          />
         </TabsContent>
 
         {/* TAB: GUÍAS DE DESPACHO */}
@@ -812,7 +820,7 @@ export default function TraceabilityModule() {
 
         {/* TAB: ESCANEO DE GUÍAS */}
         <TabsContent value="scanning" className="space-y-4">
-          {/* Contenido vacío */}
+          <ScannedGuidesModule />
         </TabsContent>
       </Tabs>
 

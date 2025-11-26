@@ -135,7 +135,8 @@ class ApiClient {
       }
 
       // Handle backend success response format
-      if (data.status === 'success') {
+      // Support both "status": "success" and "success": true formats
+      if (data.status === 'success' || data.success === true) {
         // For login responses, data.data contains the login response
         if (data.data && (data.data.access_token || data.data.token)) {
           return { 

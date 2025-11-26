@@ -29,6 +29,7 @@ import CostModal from "@/components/modals/cost-modal"
 import ExpenseModal from "@/components/modals/expense-modal"
 import CapitalModal from "@/components/modals/capital-modal"
 import UniversalImportWizard from "@/components/shared/universal-import-wizard"
+import ManagementImportWizard from "@/components/modules/management/management-import-wizard"
 import ExportButton from "@/components/shared/export-button"
 
 export default function ManagementModule() {
@@ -40,6 +41,9 @@ export default function ManagementModule() {
   const [showCostsImport, setShowCostsImport] = useState(false)
   const [showExpensesImport, setShowExpensesImport] = useState(false)
   const [showCapitalImport, setShowCapitalImport] = useState(false)
+  
+  // Management Import Wizard (new unified import)
+  const [showManagementImport, setShowManagementImport] = useState(false)
 
   // Search states
   const [searchCosts, setSearchCosts] = useState("")
@@ -169,6 +173,7 @@ export default function ManagementModule() {
   const [isDeletingCapital, setIsDeletingCapital] = useState(false)
 
   const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState<"costos" | "gastos" | "capital">("costos")
 
   const handleConfirmDeleteCost = async () => {
     if (!deleteCostTarget) return
@@ -183,8 +188,15 @@ export default function ManagementModule() {
       console.log("Delete cost response:", response)
       
       if (response.data || response.message) {
+        // Optimistic UI update: remove cost from local state immediately
+        setManagementData(prev => ({
+          ...prev,
+          costos: (prev.costos || []).filter(costo => costo.id !== deleteCostTarget.id)
+        }))
+
         toast.success("Costo eliminado exitosamente")
         setDeleteCostTarget(null)
+        // Background refresh to stay in sync with backend
         fetchManagementData()
       } else {
         toast.error(response.error || "Error al eliminar el costo")
@@ -210,6 +222,12 @@ export default function ManagementModule() {
       console.log("Delete response:", response)
       
       if (response.data || response.message) {
+        // Optimistic UI update: remove expense from local state immediately
+        setManagementData(prev => ({
+          ...prev,
+          gastos: (prev.gastos || []).filter(gasto => gasto.id !== deleteExpenseTarget.id)
+        }))
+
         toast.success("Gasto eliminado exitosamente")
         fetchManagementData()
         setDeleteExpenseTarget(null) // Close dialog
@@ -237,6 +255,12 @@ export default function ManagementModule() {
       console.log("Delete capital response:", response)
       
       if (response.data || response.message) {
+        // Optimistic UI update: remove capital movement from local state immediately
+        setManagementData(prev => ({
+          ...prev,
+          capital: (prev.capital || []).filter(cap => cap.id !== deleteCapitalTarget.id)
+        }))
+
         toast.success("Movimiento de capital eliminado exitosamente")
         fetchManagementData()
         setDeleteCapitalTarget(null) // Close dialog
@@ -871,7 +895,44 @@ export default function ManagementModule() {
 
       {!loading && (
         <>
-          <Tabs defaultValue="costos" className="w-full">
+          {/* Contextual import cards */}
+          {activeTab === "capital" ? (
+            <Card className="border-emerald-200 bg-emerald-50/60">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-semibold text-lg mb-1">Importación de Capital y Financiamiento</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Carga un archivo exclusivo con aportes de socios, préstamos o inversiones para mantener separado el capital del resto de la gestión.
+                    </p>
+                  </div>
+                  <Button onClick={() => setShowCapitalImport(true)} size="lg" className="ml-4">
+                    <Upload className="w-4 h-4 mr-2" />
+                    Importar Movimientos de Capital
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className="border-primary/20 bg-primary/5">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-semibold text-lg mb-1">Importación Unificada de Gestión</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Sube un archivo Excel/CSV con compras y gastos. Se separarán automáticamente según el campo "Concepto".
+                    </p>
+                  </div>
+                  <Button onClick={() => setShowManagementImport(true)} size="lg" className="ml-4">
+                    <Upload className="w-4 h-4 mr-2" />
+                    Importar Archivo General
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "costos" | "gastos" | "capital")} className="w-full">
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="costos">Costos</TabsTrigger>
           <TabsTrigger value="gastos">Gastos</TabsTrigger>
@@ -1331,6 +1392,17 @@ export default function ManagementModule() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Management Import Wizard - Unified Import */}
+      <ManagementImportWizard
+        isOpen={showManagementImport}
+        onClose={() => setShowManagementImport(false)}
+        onImportComplete={() => {
+          setShowManagementImport(false)
+          loadManagementData()
+        }}
+        onCancel={() => setShowManagementImport(false)}
+      />
 
       {/* Individual Modals */}
       <CostModal

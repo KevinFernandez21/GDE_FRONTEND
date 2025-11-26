@@ -1,6 +1,6 @@
 "use client"
 
-import { Search, Eye, Plus, Filter, ChevronLeft, ChevronRight, Upload } from "lucide-react"
+import { Search, Eye, Filter, ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -10,25 +10,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useState, useEffect, useCallback } from "react"
 import { toast } from "sonner"
 import { apiClient } from "@/lib/api"
-import GuideMasterImportWizard from "./guide-master-import-wizard"
-import ScannedGuidesImportWizard from "./scanned-guides-import-wizard"
 
 interface Guide {
   id: string
-  codigo: string
-  fecha: string
-  cliente: string
+  numero_guia?: string
+  codigo?: string
+  fecha?: string
+  cliente?: string
   productos: number
-  dropshipper?: string
-  estatus?: string
   transportadora?: string
+  fecha_match?: string  // Fecha cuando se hizo match entre delivery_guides y scanned_guides
+  estado_verificado?: string  // Estado de movilización: no_registrado, en_transito, entregado, devuelto
   created_at?: string
   updated_at?: string
-  // Campos opcionales de guide_master (si se necesita compatibilidad)
-  estado_actual?: string
-  tracking_status?: string
-  scans_count?: number
-  last_scan_at?: string
 }
 
 interface GuideListProps {
@@ -51,8 +45,6 @@ export default function GuideList({
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
-  const [showImportModal, setShowImportModal] = useState(false)
-  const [showUploadScannedModal, setShowUploadScannedModal] = useState(false)
   const pageSize = 50
 
   const fetchGuides = useCallback(async () => {
@@ -73,12 +65,19 @@ export default function GuideList({
         // params.append("status_filter", statusFilter) // Disabled for now
       }
 
-      const response = await apiClient.request(`/delivery-guides?${params.toString()}`)
+      // Use guide-master comparison endpoint to compare delivery guides with scanned guides
+      const response = await apiClient.request(`/guide-master/comparison?${params.toString()}`)
       
       if (response.data?.items) {
+        // Response structure: { items: [...], total: ..., page: ..., size: ..., pages: ... }
         setGuides(response.data.items)
         setTotal(response.data.total || 0)
         setTotalPages(response.data.pages || 1)
+      } else if (response.data?.data?.items) {
+        // Fallback for different response structure
+        setGuides(response.data.data.items)
+        setTotal(response.data.data.total || 0)
+        setTotalPages(response.data.data.pages || 1)
       }
     } catch (error) {
       console.error("Error fetching guides:", error)
@@ -118,20 +117,6 @@ export default function GuideList({
             <CardDescription>
               Lista completa de guías con filtros por estado
             </CardDescription>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setShowImportModal(true)}>
-              <Upload className="w-4 h-4 mr-2" />
-              Importar Guías Madre
-            </Button>
-            <Button variant="outline" onClick={() => setShowUploadScannedModal(true)}>
-              <Upload className="w-4 h-4 mr-2" />
-              Subir Guías Escaneadas
-            </Button>
-            <Button onClick={() => onRegisterEvent?.("")}>
-              <Plus className="w-4 h-4 mr-2" />
-              Registrar Evento
-            </Button>
           </div>
         </div>
       </CardHeader>
@@ -182,55 +167,40 @@ export default function GuideList({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Código</TableHead>
-                  <TableHead>Fecha</TableHead>
-                  <TableHead>Cliente</TableHead>
-                  <TableHead>Productos</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead>Estatus</TableHead>
+                  <TableHead>Número de Guía</TableHead>
                   <TableHead>Transportadora</TableHead>
-                  <TableHead>Escaneos</TableHead>
+                  <TableHead>Productos</TableHead>
+                  <TableHead>Fecha de Match</TableHead>
+                  <TableHead>Estado de Movilización</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {guides.map((guide) => (
                   <TableRow key={guide.id}>
-                    <TableCell className="font-mono text-sm">{guide.codigo}</TableCell>
-                    <TableCell>
-                      {guide.fecha ? new Date(guide.fecha).toLocaleDateString() : "-"}
-                    </TableCell>
-                    <TableCell>{guide.cliente || "-"}</TableCell>
-                    <TableCell>{guide.productos || 0}</TableCell>
-                    <TableCell>
-                      {guide.estado_actual ? (
-                        getStatusBadge(guide.estado_actual)
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {guide.estatus ? (
-                        <Badge variant="outline">{guide.estatus}</Badge>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
+                    <TableCell className="font-mono text-sm font-semibold">
+                      {guide.numero_guia || guide.codigo || "-"}
                     </TableCell>
                     <TableCell>
                       {guide.transportadora || <span className="text-muted-foreground">-</span>}
                     </TableCell>
+                    <TableCell>{guide.productos || 0}</TableCell>
                     <TableCell>
-                      {guide.scans_count !== undefined ? (
-                        <>
-                          {guide.scans_count || 0}
-                          {guide.last_scan_at && (
-                            <span className="text-xs text-muted-foreground block">
-                              {new Date(guide.last_scan_at).toLocaleDateString()}
-                            </span>
-                          )}
-                        </>
+                      {guide.fecha_match ? (
+                        new Date(guide.fecha_match).toLocaleDateString('es-ES', {
+                          year: 'numeric',
+                          month: '2-digit',
+                          day: '2-digit'
+                        })
                       ) : (
                         <span className="text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {guide.estado_verificado ? (
+                        getStatusBadge(guide.estado_verificado)
+                      ) : (
+                        <Badge variant="secondary">No Registrado</Badge>
                       )}
                     </TableCell>
                     <TableCell className="text-right">
@@ -283,30 +253,6 @@ export default function GuideList({
           </>
         )}
       </CardContent>
-
-      {/* Import Master Guides Wizard */}
-      <GuideMasterImportWizard
-        isOpen={showImportModal}
-        onClose={() => setShowImportModal(false)}
-        onCancel={() => setShowImportModal(false)}
-        onImportComplete={() => {
-          setShowImportModal(false)
-          fetchGuides()
-          onImportSuccess?.()
-        }}
-      />
-
-      {/* Upload Scanned Guides Wizard */}
-      <ScannedGuidesImportWizard
-        isOpen={showUploadScannedModal}
-        onClose={() => setShowUploadScannedModal(false)}
-        onCancel={() => setShowUploadScannedModal(false)}
-        onImportComplete={() => {
-          setShowUploadScannedModal(false)
-          fetchGuides()
-          onImportSuccess?.()
-        }}
-      />
     </Card>
   )
 }

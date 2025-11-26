@@ -283,7 +283,7 @@ export default function ScannedGuidesImportWizard({ isOpen, onClose, onImportCom
       const formData = new FormData()
       formData.append('file', selectedFile)
       
-      const response = await apiClient.request('/traceability/guides/upload-scanned', {
+      const response = await apiClient.request('/scanned-guides/import', {
         method: 'POST',
         body: formData
       })
