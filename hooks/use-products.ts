@@ -166,8 +166,9 @@ export function useStockMetrics() {
         categories: stockMetrics.categorias || 0
       };
     },
-    staleTime: 30 * 1000, // 30 seconds - refresh frequently for accurate metrics
+    staleTime: 0, // ✅ FIX: Always consider data stale to allow immediate refetch after mutations
     refetchOnWindowFocus: true,
+    refetchOnMount: true, // ✅ FIX: Refetch when component mounts to ensure fresh data
   });
 }
 
@@ -263,13 +264,20 @@ export function useDeleteProduct() {
       }
       return id;
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       // Invalidate products list
       queryClient.invalidateQueries({ queryKey: productKeys.lists() });
       // Invalidate alerts
       queryClient.invalidateQueries({ queryKey: productKeys.alerts() });
-      // Invalidate stock metrics
-      queryClient.invalidateQueries({ queryKey: ['stock-metrics'] });
+      
+      // ✅ FIX: Force immediate refetch of stock metrics
+      // Remove from cache first, then refetch
+      queryClient.removeQueries({ queryKey: ['stock-metrics'] });
+      // Wait a bit for backend to process, then refetch
+      setTimeout(async () => {
+        await queryClient.refetchQueries({ queryKey: ['stock-metrics'] });
+      }, 100);
+      
       toast.success('Producto eliminado exitosamente');
     },
     onError: (error: Error) => {
@@ -289,17 +297,24 @@ export function useBulkDeleteProducts() {
       }
       return ids;
     },
-    onSuccess: (ids) => {
+    onSuccess: async (ids) => {
       // Invalidate products list
       queryClient.invalidateQueries({ queryKey: productKeys.lists() });
       // Invalidate alerts
       queryClient.invalidateQueries({ queryKey: productKeys.alerts() });
-      // Invalidate stock metrics
-      queryClient.invalidateQueries({ queryKey: ['stock-metrics'] });
       // Invalidate individual product queries
       ids.forEach((id) => {
         queryClient.invalidateQueries({ queryKey: productKeys.detail(id) });
       });
+      
+      // ✅ FIX: Force immediate refetch of stock metrics after bulk delete
+      // Remove from cache first, then refetch
+      queryClient.removeQueries({ queryKey: ['stock-metrics'] });
+      // Wait a bit for backend to process, then refetch
+      setTimeout(async () => {
+        await queryClient.refetchQueries({ queryKey: ['stock-metrics'] });
+      }, 100);
+      
       toast.success(`${ids.length} productos eliminados exitosamente`);
     },
     onError: (error: Error) => {

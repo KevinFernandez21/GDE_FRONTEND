@@ -100,7 +100,9 @@ class ApiClient {
 
       console.log(`[ApiClient] Response status: ${response.status}`);
       const data = await response.json();
-      console.log(`[ApiClient] Response data:`, data);
+      console.log(`[ApiClient] Response data (raw):`, JSON.stringify(data, null, 2).substring(0, 2000));
+      console.log(`[ApiClient] Response data keys:`, Object.keys(data || {}));
+      console.log(`[ApiClient] Response data.data keys:`, data.data ? Object.keys(data.data) : 'no data.data');
 
       if (!response.ok) {
         // Handle FastAPI error response
@@ -144,8 +146,24 @@ class ApiClient {
             message: data.message 
           };
         }
+        // ✅ CORRECCIÓN: Para ImportResponse, data.data contiene el validation_result
+        // Si data.data existe, usarlo; si no, usar data directamente
+        const extractedData = data.data || data;
+        console.log(`[ApiClient] Processing success response:`, {
+          originalDataKeys: Object.keys(data || {}),
+          hasDataField: !!data.data,
+          dataDataType: typeof data.data,
+          extractedDataKeys: Object.keys(extractedData || {}),
+          fileInfo: extractedData?.file_info,
+          fileInfoType: typeof extractedData?.file_info,
+          fileInfoRows: extractedData?.file_info?.rows,
+          fileInfoRowsType: typeof extractedData?.file_info?.rows,
+          fileInfoColumns: extractedData?.file_info?.columns,
+          fileInfoColumnsType: typeof extractedData?.file_info?.columns,
+          fullExtractedData: JSON.stringify(extractedData, null, 2).substring(0, 500)
+        });
         return { 
-          data: data.data || data,
+          data: extractedData,
           message: data.message 
         };
       }
@@ -291,29 +309,78 @@ class ApiClient {
     });
   }
 
+  async bulkDeleteProducts(ids: string[]) {
+    return this.request<any>('/inventory/products/bulk-delete', {
+      method: 'POST',
+      body: JSON.stringify(ids),
+    });
+  }
+
   async searchProductByCode(code: string) {
     return this.request<any>(`/inventory/products/search/${encodeURIComponent(code)}`);
   }
 
   async validateImport(file: File) {
+    console.log("🔍 [API DEBUG] Validating file:", file.name, file.size);
     const formData = new FormData();
     formData.append('file', file);
+    
+    // ✅ CORRECCIÓN: Usar el método request para mantener consistencia con el resto del código
     return this.request<any>('/inventory/import/validate', {
       method: 'POST',
       body: formData,
     });
   }
 
-  async importProducts(file: File, options?: { import_only_valid?: boolean }) {
+  async importProducts(file: File, options?: { import_only_valid?: boolean; update_existing?: boolean }) {
+    console.log("🔍 [API DEBUG] Importing file:", file.name, "Options:", options);
     const formData = new FormData();
     formData.append('file', file);
+    formData.append('update_existing', (options?.update_existing !== false).toString());
+    formData.append('dry_run', 'false');
+    
     if (options?.import_only_valid !== undefined) {
       formData.append('import_only_valid', options.import_only_valid.toString());
     }
-    return this.request<any>('/inventory/import', {
-      method: 'POST',
-      body: formData,
-    });
+    
+    try {
+      const token = this.token || (typeof window !== 'undefined' ? localStorage.getItem('gde_token') : null);
+      const url = `${this.baseUrl}/inventory/import`;
+      
+      console.log("🔍 [API DEBUG] Import URL:", url);
+      console.log("🔍 [API DEBUG] Has token:", !!token);
+      console.log("🔍 [API DEBUG] FormData entries:");
+      for (const [key, value] of formData.entries()) {
+        console.log(`  ${key}:`, value instanceof File ? `${value.name} (${value.size} bytes)` : value);
+      }
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          ...(token && { 'Authorization': `Bearer ${token}` })
+        }
+      });
+      
+      console.log("🔍 [API DEBUG] Import response status:", response.status);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("🔍 [API DEBUG] Import error response:", errorText);
+        throw new Error(`HTTP error! status: ${response.status}, body: ${errorText}`);
+      }
+      
+      const data = await response.json();
+      console.log("🔍 [API DEBUG] Import response data:", data);
+      
+      return { data, error: undefined as string | undefined };
+    } catch (error) {
+      console.error("🔍 [API DEBUG] Import error:", error);
+      return { 
+        data: undefined, 
+        error: (error instanceof Error ? error.message : "Error desconocido") as string
+      };
+    }
   }
 
   // Users endpoints

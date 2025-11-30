@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef, memo } from "react"
 import { Search, Filter, Download, Plus, Eye, Edit, Trash2, Package, AlertTriangle, Upload, RotateCcw, ChevronLeft, ChevronRight, Scan, Camera, CameraOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -34,11 +34,12 @@ import {
   useDeleteProduct,
   useBulkDeleteProducts,
   useStockMetrics,
-  type Product,
   type ProductFilters,
 } from "@/hooks/use-products"
+import { useProductSelection } from "@/hooks/use-product-selection"
+import type { Product } from "@/hooks/use-products"
 
-interface Product {
+interface ProductType {
   id: string
   code: string
   sku?: string // Campo opcional para compatibilidad con backend
@@ -67,12 +68,9 @@ interface Product {
 }
 
 
-export default function InventoryModule() {
+function InventoryModule() {
   const { user } = useAuth()
   const [activeTab, setActiveTab] = useState("products")
-  
-  // Selection state for bulk operations
-  const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set())
 
   // Helper function to safely format numbers
   const formatPrice = (price: any): string => {
@@ -127,17 +125,23 @@ export default function InventoryModule() {
   const deleteProduct = useDeleteProduct()
   const bulkDeleteProducts = useBulkDeleteProducts()
   
+  // ✅ FIX: Get stock metrics early so refetchStockMetrics is available for handlers
+  const { data: stockMetricsData, isLoading: metricsLoading, refetch: refetchStockMetrics } = useStockMetrics()
+  
   // Extract products and pagination from response
   const products = productsData?.items || []
   const totalProducts = productsData?.total || 0
   const totalPages = Math.ceil(totalProducts / pageSize)
+
+  // ✅ OPTIMIZED: Use custom hook for product selection
+  const { selectedProducts, toggleSelect, selectAll, isSelectAll, clearSelection } = useProductSelection(products)
 
   // Import state
   const [showImportWizard, setShowImportWizard] = useState(false)
 
   // Product form state
   const [showProductDialog, setShowProductDialog] = useState(false)
-  const [editingProduct, setEditingProduct] = useState<Product | null>(null)
+  const [editingProduct, setEditingProduct] = useState<ProductType | null>(null)
   const [productForm, setProductForm] = useState({
     code: "",
     sku: "",
@@ -163,7 +167,7 @@ export default function InventoryModule() {
   const isSaving = createProduct.isPending || updateProduct.isPending
 
   // Delete confirmation state
-  const [deleteTarget, setDeleteTarget] = useState<Product | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<ProductType | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const isDeletingMutation = deleteProduct.isPending || bulkDeleteProducts.isPending
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false)
@@ -176,6 +180,11 @@ export default function InventoryModule() {
       setCurrentPage(1)
     }
   }, [searchQuery, categoryFilter, providerFilter, minStockFilter, maxStockFilter, sortBy])
+  
+  // ✅ OPTIMIZED: Clear selection when filters change (simplified)
+  useEffect(() => {
+    clearSelection()
+  }, [searchQuery, categoryFilter, providerFilter, minStockFilter, maxStockFilter, sortBy, clearSelection])
   
   // Handle error from React Query
   useEffect(() => {
@@ -287,13 +296,18 @@ export default function InventoryModule() {
     }
   }
 
-  // Confirm delete action from custom dialog
-  const handleConfirmDelete = async () => {
+  // ✅ OPTIMIZED: Memoized handlers
+  const handleConfirmDelete = useCallback(async () => {
     if (!deleteTarget) return
     try {
       setIsDeleting(true)
       await deleteProduct.mutateAsync(deleteTarget.id)
       setDeleteTarget(null)
+      
+      // ✅ FIX: Force immediate refetch of stock metrics
+      setTimeout(async () => {
+        await refetchStockMetrics()
+      }, 300)
       
       // Notify dashboard to refresh
       window.dispatchEvent(new CustomEvent('productsDeleted', { detail: { count: 1 } }))
@@ -303,40 +317,30 @@ export default function InventoryModule() {
     } finally {
       setIsDeleting(false)
     }
-  }
+  }, [deleteTarget, deleteProduct, refetchStockMetrics])
 
-  // Handle individual product selection
-  const handleToggleSelect = (productId: string) => {
-    const newSelected = new Set(selectedProducts)
-    if (newSelected.has(productId)) {
-      newSelected.delete(productId)
-    } else {
-      newSelected.add(productId)
-    }
-    setSelectedProducts(newSelected)
-  }
+  // ✅ OPTIMIZED: Use hook's toggleSelect directly
+  const handleToggleSelect = useCallback((productId: string) => {
+    toggleSelect(productId)
+  }, [toggleSelect])
 
-  // Handle select all
-  const handleSelectAll = () => {
-    if (isSelectAll) {
-      setSelectedProducts(new Set())
-    } else {
-      const allIds = new Set(filteredProducts.map(p => p.id))
-      setSelectedProducts(allIds)
-    }
-  }
+  // ✅ OPTIMIZED: Use hook's selectAll with memoized product IDs
+  const handleSelectAll = useCallback(() => {
+    const allIds = products.map(p => p.id)
+    selectAll(allIds)
+  }, [products, selectAll])
 
-  // Handle bulk delete confirmation dialog
-  const handleBulkDeleteClick = () => {
+  // ✅ OPTIMIZED: Memoized bulk delete click handler
+  const handleBulkDeleteClick = useCallback(() => {
     if (selectedProducts.size === 0) {
       toast.info("Selecciona al menos un producto para eliminar")
       return
     }
     setShowBulkDeleteDialog(true)
-  }
+  }, [selectedProducts.size])
 
-  // Handle bulk delete with progress feedback
-  const handleBulkDelete = async () => {
+  // ✅ OPTIMIZED: Bulk delete with optimistic update
+  const handleBulkDelete = useCallback(async () => {
     if (selectedProducts.size === 0) {
       toast.info("Selecciona al menos un producto para eliminar")
       return
@@ -345,6 +349,9 @@ export default function InventoryModule() {
     setShowBulkDeleteDialog(false)
     const productIdsArray = Array.from(selectedProducts)
     const count = productIdsArray.length
+    
+    // ✅ OPTIMISTIC UPDATE: Clear selection immediately for better UX
+    clearSelection()
     
     // Show deleting dialog
     setDeletingCount(count)
@@ -360,7 +367,11 @@ export default function InventoryModule() {
       // Close deleting dialog
       setShowDeletingDialog(false)
       
-      setSelectedProducts(new Set())
+      // ✅ FIX: Force immediate refetch of stock metrics
+      // Wait a bit for backend to process, then refetch
+      setTimeout(async () => {
+        await refetchStockMetrics()
+      }, 300)
       
       // Notify dashboard to refresh
       window.dispatchEvent(new CustomEvent('productsDeleted', { detail: { count } }))
@@ -370,14 +381,16 @@ export default function InventoryModule() {
         setCurrentPage(1)
       }
     } catch (error) {
-      // Close deleting dialog on error
+      // ✅ REVERT: Restore selection on error (though React Query will handle the data)
+      // The selection is already cleared, but we could restore it if needed
       setShowDeletingDialog(false)
       // Error handling is done in the mutation hook
       console.error("Bulk delete error:", error)
+      toast.error("Error al eliminar productos. Por favor, intenta de nuevo.")
     } finally {
       setIsDeleting(false)
     }
-  }
+  }, [selectedProducts, clearSelection, bulkDeleteProducts, currentPage, refetchStockMetrics])
 
   // Reset product form
   const resetProductForm = () => {
@@ -404,7 +417,7 @@ export default function InventoryModule() {
   }
 
   // Start editing product
-  const startEditProduct = (product: Product) => {
+  const startEditProduct = (product: ProductType) => {
     setEditingProduct(product)
     // Map product data to form, handling both cost_price and purchase_price
     const productAny = product as any
@@ -433,65 +446,31 @@ export default function InventoryModule() {
     setShowProductDialog(true)
   }
 
-  // Filter products
-  // Server-side filtering is handled by React Query with filters
-  // Products are already filtered by search, category, provider, etc. on the server
+  // ✅ OPTIMIZED: Products are already filtered server-side, no need for additional filtering
+  // Just ensure it's an array
   const filteredProducts = useMemo(() => {
-    // Asegurar que products sea un array
     if (!Array.isArray(products)) {
       console.warn("Products is not an array:", products)
       return []
     }
-    
-    // Return products as-is since filtering is done server-side
     return products
   }, [products])
 
-  // Calculate isSelectAll directly (no useMemo to avoid Set comparison issues)
-  // This is a simple O(n) operation that runs on each render
-  const isSelectAll = filteredProducts.length > 0 && 
-                      filteredProducts.every(p => selectedProducts.has(p.id)) &&
-                      selectedProducts.size === filteredProducts.length
-
-  // Clean up selection when filters change (not when products data updates)
-  // This prevents infinite loops while still cleaning up invalid selections
-  const prevFiltersRef = useRef<string>('')
-  
+  // ✅ FIX: Listen for product deletion events to refresh metrics
   useEffect(() => {
-    const currentFilters = `${searchQuery}-${categoryFilter}-${providerFilter}-${minStockFilter}-${maxStockFilter}-${sortBy}`
-    
-    // Only clean selection when filters actually change, not when products update
-    if (currentFilters === prevFiltersRef.current) {
-      return
+    const handleProductsDeleted = async (event: Event) => {
+      // Force refetch of stock metrics when products are deleted
+      // Wait a bit to ensure backend has processed the deletion
+      setTimeout(async () => {
+        await refetchStockMetrics()
+      }, 200)
     }
-    
-    prevFiltersRef.current = currentFilters
-    
-    // Clean up selection when filters change - use current filteredProducts
-    // This is safe because we only run when filters change, not when products update
-    const currentFilteredIds = new Set(filteredProducts.map(p => p.id))
-    setSelectedProducts(prev => {
-      // If no filtered products, clear selection
-      if (currentFilteredIds.size === 0) {
-        if (prev.size === 0) return prev
-        return new Set()
-      }
-      
-      // Remove products that are no longer in filtered list
-      const cleaned = new Set(
-        Array.from(prev).filter(id => currentFilteredIds.has(id))
-      )
-      // Only update if there's a change
-      if (cleaned.size === prev.size && Array.from(cleaned).every(id => prev.has(id))) {
-        return prev
-      }
-      return cleaned
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery, categoryFilter, providerFilter, minStockFilter, maxStockFilter, sortBy])
 
-  // Get stock metrics from API (all products in database)
-  const { data: stockMetricsData, isLoading: metricsLoading } = useStockMetrics()
+    window.addEventListener('productsDeleted', handleProductsDeleted)
+    return () => {
+      window.removeEventListener('productsDeleted', handleProductsDeleted)
+    }
+  }, [refetchStockMetrics])
   
   // Use API metrics if available, otherwise fallback to local calculation
   const stockMetrics = useMemo(() => {
@@ -617,17 +596,39 @@ export default function InventoryModule() {
                   <CardDescription className="text-xs sm:text-sm">Gestiona tu catálogo de productos y niveles de stock</CardDescription>
                 </div>
                 <div className="flex flex-col sm:flex-row gap-2 sm:space-x-2">
-                  {selectedProducts.size > 0 && (
+                  {selectedProducts.size > 0 ? (
+                    <>
+                      <Button
+                        onClick={clearSelection}
+                        variant="outline"
+                        size="sm"
+                        className="w-full sm:w-auto"
+                      >
+                        <span className="hidden sm:inline">Deseleccionar todos</span>
+                        <span className="sm:hidden">Deseleccionar</span>
+                      </Button>
+                      <Button
+                        onClick={handleBulkDeleteClick}
+                        disabled={isDeleting}
+                        variant="destructive"
+                        size="sm"
+                        className="bg-red-600 hover:bg-red-700 w-full sm:w-auto"
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        <span className="hidden sm:inline">Eliminar {selectedProducts.size} Seleccionado{selectedProducts.size !== 1 ? 's' : ''}</span>
+                        <span className="sm:hidden">Eliminar {selectedProducts.size}</span>
+                      </Button>
+                    </>
+                  ) : (
                     <Button
-                      onClick={handleBulkDeleteClick}
-                      disabled={isDeleting}
-                      variant="destructive"
+                      onClick={handleSelectAll}
+                      variant="outline"
                       size="sm"
-                      className="bg-red-600 hover:bg-red-700 w-full sm:w-auto"
+                      className="w-full sm:w-auto border-blue-600 text-blue-600 hover:bg-blue-50"
+                      disabled={filteredProducts.length === 0}
                     >
-                      <Trash2 className="w-4 h-4 mr-2" />
-                      <span className="hidden sm:inline">Eliminar {selectedProducts.size} Seleccionado{selectedProducts.size !== 1 ? 's' : ''}</span>
-                      <span className="sm:hidden">Eliminar {selectedProducts.size}</span>
+                      <span className="hidden sm:inline">Seleccionar todos ({filteredProducts.length})</span>
+                      <span className="sm:hidden">Seleccionar todos</span>
                     </Button>
                   )}
                   <Button
@@ -745,11 +746,16 @@ export default function InventoryModule() {
                     <TableHeader>
                       <TableRow>
                         <TableHead className="px-4 lg:px-6 py-3 lg:py-4 w-12">
-                          <Checkbox
-                            checked={isSelectAll}
-                            onCheckedChange={handleSelectAll}
-                            aria-label="Seleccionar todos"
-                          />
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              checked={isSelectAll}
+                              onCheckedChange={handleSelectAll}
+                              aria-label="Seleccionar todos los productos de esta página"
+                            />
+                            <span className="text-xs text-gray-500 hidden xl:inline">
+                              {isSelectAll ? "Deseleccionar" : "Seleccionar todos"}
+                            </span>
+                          </div>
                         </TableHead>
                         <TableHead className="px-4 lg:px-6 py-3 lg:py-4">Código</TableHead>
                         <TableHead className="px-4 lg:px-6 py-3 lg:py-4">Nombre</TableHead>
@@ -1487,3 +1493,6 @@ export default function InventoryModule() {
     </div>
   )
 }
+
+// ✅ OPTIMIZED: Export memoized component to prevent unnecessary re-renders
+export default memo(InventoryModule)

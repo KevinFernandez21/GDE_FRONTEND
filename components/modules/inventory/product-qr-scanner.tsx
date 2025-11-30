@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect, useCallback } from "react"
+import { useState, useRef, useEffect, useCallback, memo } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -24,7 +24,7 @@ interface ScannedProduct {
   location?: string
 }
 
-export default function ProductQRScanner() {
+function ProductQRScanner() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const qrScannerRef = useRef<QrScanner | null>(null)
   const [isScanning, setIsScanning] = useState(false)
@@ -37,17 +37,8 @@ export default function ProductQRScanner() {
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
   const retryCountRef = useRef<number>(0)
 
-  useEffect(() => {
-    checkCameraAvailability()
-    return () => {
-      stopScanning()
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current)
-      }
-    }
-  }, [])
-
-  const checkCameraAvailability = async () => {
+  // ✅ OPTIMIZED: Memoized camera check
+  const checkCameraAvailability = useCallback(async () => {
     try {
       const hasCamera = await QrScanner.hasCamera()
       setHasCamera(hasCamera)
@@ -55,77 +46,20 @@ export default function ProductQRScanner() {
       console.error('Error checking camera:', error)
       setHasCamera(false)
     }
-  }
+  }, [])
 
-  const startScanning = async () => {
-    try {
-      // Esperar un momento para asegurar que el elemento video esté en el DOM
-      await new Promise(resolve => setTimeout(resolve, 100))
-      
-      if (!videoRef.current) {
-        console.error('[QR Scanner] Video element no disponible después de esperar')
-        toast.error("Error: No se pudo acceder al elemento de video. Por favor, recarga la página.")
-        return
-      }
-
-      setError(null)
-      setIsScanning(true) // Cambiar el estado primero para que el video se renderice
-      
-      // Esperar un frame más para que React actualice el DOM
-      await new Promise(resolve => requestAnimationFrame(resolve))
-      
-      if (!videoRef.current) {
-        console.error('[QR Scanner] Video element aún no disponible')
-        setIsScanning(false)
-        toast.error("Error: No se pudo inicializar el video. Por favor, intenta de nuevo.")
-        return
-      }
-
-      qrScannerRef.current = new QrScanner(
-        videoRef.current,
-        async (result) => {
-          await handleQRScanned(result.data)
-        },
-        {
-          highlightScanRegion: true,
-          highlightCodeOutline: true,
-          preferredCamera: 'environment',
-          maxScansPerSecond: 2, // Limitar escaneos para evitar múltiples llamadas
-        }
-      )
-
-      await qrScannerRef.current.start()
-      toast.success("Cámara activada - Escanea un código QR")
-    } catch (error) {
-      console.error('[QR Scanner] Error starting camera:', error)
-      setIsScanning(false)
-      const errorMessage = error instanceof Error ? error.message : 'Error al acceder a la cámara'
-      setError(errorMessage)
-      toast.error(errorMessage)
-    }
-  }
-
-  const stopScanning = () => {
-    if (qrScannerRef.current) {
-      qrScannerRef.current.stop()
-      qrScannerRef.current.destroy()
-      qrScannerRef.current = null
-    }
-    setIsScanning(false)
-  }
-
-  // Validate product payload structure
-  const validateProductPayload = (product: any): product is ScannedProduct => {
+  // ✅ OPTIMIZED: Memoized validation function (moved before startScanning)
+  const validateProductPayload = useCallback((product: any): product is ScannedProduct => {
     if (!product) return false
     // Must have at least id or code/sku, and name
     const hasId = !!product.id
     const hasCode = !!(product.code || product.sku)
     const hasName = !!product.name
     return (hasId || hasCode) && hasName
-  }
+  }, [])
 
-  // Search product with retry and backoff
-  const searchProductWithRetry = async (code: string, maxRetries: number = 3): Promise<ScannedProduct | null> => {
+  // ✅ OPTIMIZED: Memoized search with retry (moved before startScanning)
+  const searchProductWithRetry = useCallback(async (code: string, maxRetries: number = 3): Promise<ScannedProduct | null> => {
     let lastError: Error | null = null
     
     for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -154,13 +88,13 @@ export default function ProductQRScanner() {
           code: product.code || product.sku || code,
           sku: product.sku || product.code || code,
           name: product.name || 'Producto sin nombre',
-          sale_price: typeof product.sale_price === 'number' ? product.sale_price : (product.price || 0),
-          cost_price: typeof product.cost_price === 'number' ? product.cost_price : (product.cost || 0),
+          sale_price: typeof product.sale_price === 'number' ? product.sale_price : (typeof (product as any).price === 'number' ? (product as any).price : 0),
+          cost_price: typeof product.cost_price === 'number' ? product.cost_price : (typeof (product as any).cost === 'number' ? (product as any).cost : 0),
           current_stock: typeof product.current_stock === 'number' ? product.current_stock : 0,
           min_stock: typeof product.min_stock === 'number' ? product.min_stock : 0,
           category: product.category,
           brand: product.brand,
-          proveedor: product.proveedor || product.provider,
+          proveedor: product.proveedor || (product as any).provider,
           location: product.location,
         }
         
@@ -180,114 +114,183 @@ export default function ProductQRScanner() {
     
     // All retries failed
     throw lastError || new Error("Error al buscar producto después de múltiples intentos")
-  }
+  }, [validateProductPayload])
 
-  const handleQRScanned = useCallback(async (code: string) => {
-    if (!code || code.trim() === '') return
-
-    const trimmedCode = code.trim()
-    
-    // Debounce: ignore if same code scanned within 300ms
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current)
-    }
-    
-    // Check if same code was just scanned
-    if (lastScannedCode === trimmedCode) {
-      console.log('[QR Scanner] Código duplicado (debounce), ignorando...')
-      return
-    }
-    
-    // Set debounce timer
-    debounceTimerRef.current = setTimeout(async () => {
-      // Check again after debounce period
-      if (lastScannedCode === trimmedCode) {
-        return
-      }
+  // ✅ OPTIMIZED: Memoized start scanning
+  const startScanning = useCallback(async () => {
+    try {
+      // Esperar un momento para asegurar que el elemento video esté en el DOM
+      await new Promise(resolve => setTimeout(resolve, 100))
       
-      setLastScannedCode(trimmedCode)
-      
-      // Check if product already in history
-      if (scannedProduct && (scannedProduct.code === trimmedCode || scannedProduct.sku === trimmedCode)) {
-        console.log('[QR Scanner] Producto ya mostrado, ignorando...')
+      if (!videoRef.current) {
+        console.error('[QR Scanner] Video element no disponible después de esperar')
+        toast.error("Error: No se pudo acceder al elemento de video. Por favor, recarga la página.")
         return
       }
 
-      // Detener el escáner temporalmente mientras procesamos
-      if (qrScannerRef.current) {
-        qrScannerRef.current.stop()
-      }
-
-      setIsLoading(true)
       setError(null)
-
-      try {
-        console.log('[QR Scanner] Buscando producto con código:', trimmedCode)
-        
-        // Search with retry and backoff
-        const productData = await searchProductWithRetry(trimmedCode, 3)
-        
-        if (productData) {
-          setScannedProduct(productData)
-          
-          // Agregar al historial (máximo 10)
-          setScanHistory(prev => {
-            const newHistory = [productData, ...prev.filter(p => p.id !== productData.id && p.code !== productData.code)]
-            return newHistory.slice(0, 10)
-          })
-          
-          toast.success(`Producto encontrado: ${productData.name}`)
-          
-          // Reiniciar el escáner después de un breve delay para permitir otro escaneo
-          setTimeout(() => {
-            if (qrScannerRef.current && isScanning) {
-              qrScannerRef.current.start()
-            }
-          }, 1000)
-        }
-      } catch (error: any) {
-        console.error('[QR Scanner] Error:', error)
-        const errorMessage = error.error?.message || error.message || "Producto no encontrado"
-        setError(`No se encontró producto con código: ${trimmedCode}`)
-        setScannedProduct(null)
-        toast.error(`No se encontró producto con código: ${trimmedCode}`)
-        
-        // Reiniciar el escáner después del error
-        setTimeout(() => {
-          if (qrScannerRef.current && isScanning) {
-            qrScannerRef.current.start()
-          }
-        }, 2000)
-      } finally {
-        setIsLoading(false)
-        // Clear lastScannedCode after processing
-        setTimeout(() => {
-          setLastScannedCode(null)
-        }, 300)
+      setIsScanning(true) // Cambiar el estado primero para que el video se renderice
+      
+      // Esperar un frame más para que React actualice el DOM
+      await new Promise(resolve => requestAnimationFrame(resolve))
+      
+      if (!videoRef.current) {
+        console.error('[QR Scanner] Video element aún no disponible')
+        setIsScanning(false)
+        toast.error("Error: No se pudo inicializar el video. Por favor, intenta de nuevo.")
+        return
       }
-    }, 300) // 300ms debounce
-  }, [scannedProduct, isScanning, lastScannedCode])
 
-  const clearScanned = () => {
+      // Create scanner with inline handler to avoid dependency issues
+      qrScannerRef.current = new QrScanner(
+        videoRef.current,
+        async (result) => {
+          // Inline handler to avoid circular dependency
+          const code = result.data
+          if (!code || code.trim() === '') return
+
+          const trimmedCode = code.trim()
+          
+          // Debounce: ignore if same code scanned within 300ms
+          if (debounceTimerRef.current) {
+            clearTimeout(debounceTimerRef.current)
+          }
+          
+          // Check if same code was just scanned
+          if (lastScannedCode === trimmedCode) {
+            console.log('[QR Scanner] Código duplicado (debounce), ignorando...')
+            return
+          }
+          
+          // Set debounce timer
+          debounceTimerRef.current = setTimeout(async () => {
+            // Check again after debounce period
+            if (lastScannedCode === trimmedCode) {
+              return
+            }
+            
+            setLastScannedCode(trimmedCode)
+            
+            // Check if product already in history
+            if (scannedProduct && (scannedProduct.code === trimmedCode || scannedProduct.sku === trimmedCode)) {
+              console.log('[QR Scanner] Producto ya mostrado, ignorando...')
+              return
+            }
+
+            // Detener el escáner temporalmente mientras procesamos
+            if (qrScannerRef.current) {
+              qrScannerRef.current.stop()
+            }
+
+            setIsLoading(true)
+            setError(null)
+
+            try {
+              console.log('[QR Scanner] Buscando producto con código:', trimmedCode)
+              
+              // Search with retry and backoff
+              const productData = await searchProductWithRetry(trimmedCode, 3)
+              
+              if (productData) {
+                setScannedProduct(productData)
+                
+                // Agregar al historial (máximo 10)
+                setScanHistory(prev => {
+                  const newHistory = [productData, ...prev.filter(p => p.id !== productData.id && p.code !== productData.code)]
+                  return newHistory.slice(0, 10)
+                })
+                
+                toast.success(`Producto encontrado: ${productData.name}`)
+                
+                // Reiniciar el escáner después de un breve delay para permitir otro escaneo
+                setTimeout(() => {
+                  if (qrScannerRef.current && isScanning) {
+                    qrScannerRef.current.start()
+                  }
+                }, 1000)
+              }
+            } catch (error: unknown) {
+              console.error('[QR Scanner] Error:', error)
+              setError(`No se encontró producto con código: ${trimmedCode}`)
+              setScannedProduct(null)
+              toast.error(`No se encontró producto con código: ${trimmedCode}`)
+              
+              // Reiniciar el escáner después del error
+              setTimeout(() => {
+                if (qrScannerRef.current && isScanning) {
+                  qrScannerRef.current.start()
+                }
+              }, 2000)
+            } finally {
+              setIsLoading(false)
+              // Clear lastScannedCode after processing
+              setTimeout(() => {
+                setLastScannedCode(null)
+              }, 300)
+            }
+          }, 300) // 300ms debounce
+        },
+        {
+          highlightScanRegion: true,
+          highlightCodeOutline: true,
+          preferredCamera: 'environment',
+          maxScansPerSecond: 2, // Limitar escaneos para evitar múltiples llamadas
+        }
+      )
+
+      await qrScannerRef.current.start()
+      toast.success("Cámara activada - Escanea un código QR")
+    } catch (error) {
+      console.error('[QR Scanner] Error starting camera:', error)
+      setIsScanning(false)
+      const errorMessage = error instanceof Error ? error.message : 'Error al acceder a la cámara'
+      setError(errorMessage)
+      toast.error(errorMessage)
+    }
+  }, [lastScannedCode, scannedProduct, isScanning, searchProductWithRetry])
+
+  // ✅ OPTIMIZED: Memoized stop scanning
+  const stopScanning = useCallback(() => {
+    if (qrScannerRef.current) {
+      qrScannerRef.current.stop()
+      qrScannerRef.current.destroy()
+      qrScannerRef.current = null
+    }
+    setIsScanning(false)
+  }, [])
+
+  useEffect(() => {
+    checkCameraAvailability()
+    return () => {
+      stopScanning()
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current)
+      }
+    }
+  }, [checkCameraAvailability, stopScanning])
+
+  // ✅ OPTIMIZED: Memoized clear functions
+  const clearScanned = useCallback(() => {
     setScannedProduct(null)
     setError(null)
-  }
+  }, [])
 
-  const clearHistory = () => {
+  const clearHistory = useCallback(() => {
     setScanHistory([])
     toast.success("Historial limpiado")
-  }
+  }, [])
 
-  const formatPrice = (price: number | undefined): string => {
+  // ✅ OPTIMIZED: Memoized format functions
+  const formatPrice = useCallback((price: number | undefined): string => {
     if (!price && price !== 0) return '0.00'
     return price.toFixed(2)
-  }
+  }, [])
 
-  const getStockStatus = (current: number, min: number = 0) => {
+  const getStockStatus = useCallback((current: number, min: number = 0) => {
     if (current === 0) return { label: 'Sin Stock', variant: 'destructive' as const }
     if (current <= min) return { label: 'Stock Bajo', variant: 'destructive' as const }
     return { label: 'En Stock', variant: 'default' as const }
-  }
+  }, [])
 
   return (
     <div className="space-y-6">
@@ -542,7 +545,7 @@ export default function ProductQRScanner() {
             <ul className="space-y-2 text-sm text-blue-800">
               <li className="flex items-start gap-2">
                 <span className="font-bold">1.</span>
-                <span>Haz clic en "Iniciar Escáner" para activar la cámara</span>
+                <span>Haz clic en &quot;Iniciar Escáner&quot; para activar la cámara</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="font-bold">2.</span>
@@ -563,4 +566,7 @@ export default function ProductQRScanner() {
     </div>
   )
 }
+
+// ✅ OPTIMIZED: Export memoized component
+export default memo(ProductQRScanner)
 

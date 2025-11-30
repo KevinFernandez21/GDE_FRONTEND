@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, memo } from "react"
 import { 
   Upload, 
   CheckCircle2, 
@@ -115,7 +115,90 @@ interface ImportWizardProps {
   onCancel?: () => void
 }
 
-export default function InventoryImportWizard({ isOpen, onClose, onImportComplete, onCancel }: ImportWizardProps) {
+// ✅ Componente de Diagnóstico
+function DebugPanel() {
+  const [debugInfo, setDebugInfo] = useState<any>(null)
+  const [isRunning, setIsRunning] = useState(false)
+  
+  const runDiagnostics = async () => {
+    setIsRunning(true)
+    try {
+      const token = localStorage.getItem('gde_token')
+      // ✅ CORRECCIÓN: Usar /api directamente (el proxy de Next.js ya agrega /v1)
+      // El proxy reescribe /api/* a http://backend/api/v1/*
+      const apiBaseUrl = '/api'
+      
+      console.log("🔍 [DEBUG] Running diagnostics...")
+      console.log("🔍 [DEBUG] API Base URL:", apiBaseUrl)
+      
+      // Test connection - ✅ CORRECCIÓN: Sin /v1 porque el proxy ya lo agrega
+      const connectionTest = await fetch(`${apiBaseUrl}/inventory/import/debug/test-connection`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+      const connectionData = await connectionTest.json()
+      console.log("🔍 [DEBUG] Connection test:", connectionData)
+      
+      // Test Firestore - ✅ CORRECCIÓN: Sin /v1 porque el proxy ya lo agrega
+      const firestoreTest = await fetch(`${apiBaseUrl}/inventory/import/debug/test-firestore`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+      const firestoreData = await firestoreTest.json()
+      console.log("🔍 [DEBUG] Firestore test:", firestoreData)
+      
+      setDebugInfo({
+        connection: connectionData,
+        firestore: firestoreData,
+        tokenExists: !!token,
+        timestamp: new Date().toISOString()
+      })
+      
+    } catch (error: any) {
+      console.error('❌ [DEBUG] Diagnostic error:', error)
+      setDebugInfo({ 
+        error: error.message || "Error desconocido",
+        timestamp: new Date().toISOString()
+      })
+    } finally {
+      setIsRunning(false)
+    }
+  }
+  
+  return (
+    <Card className="mt-4 border-red-200 bg-red-50">
+      <CardHeader>
+        <CardTitle className="text-sm text-red-800">🔍 Panel de Diagnóstico</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <Button 
+          onClick={runDiagnostics} 
+          size="sm" 
+          variant="outline"
+          disabled={isRunning}
+        >
+          {isRunning ? "Ejecutando..." : "Ejecutar Diagnóstico"}
+        </Button>
+        
+        {debugInfo && (
+          <div className="mt-4">
+            <pre className="text-xs bg-white p-2 border rounded overflow-auto max-h-96">
+              {JSON.stringify(debugInfo, null, 2)}
+            </pre>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function InventoryImportWizard({ isOpen, onClose, onImportComplete, onCancel }: ImportWizardProps) {
   const [step, setStep] = useState<"upload" | "validate" | "review" | "import" | "complete">("upload")
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [isDragging, setIsDragging] = useState(false)
@@ -125,15 +208,252 @@ export default function InventoryImportWizard({ isOpen, onClose, onImportComplet
   const [importResult, setImportResult] = useState<any>(null)
   const [columnsToRemove, setColumnsToRemove] = useState<string[]>([])
 
-  // Handle validation
-  const handleValidate = () => {
+  // ✅ OPTIMIZED: Memoized validate file function
+  const validateFile = useCallback(async (file: File) => {
+    setIsValidating(true)
+    
+    try {
+      console.log("[validateFile] Iniciando validación del archivo:", file.name)
+      const response = await apiClient.validateImport(file) as { data?: any; error?: string }
+      console.log("[validateFile] Respuesta recibida (completa):", JSON.stringify(response, null, 2))
+      console.log("[validateFile] response.data:", response.data)
+      console.log("[validateFile] response.data type:", typeof response.data)
+      console.log("[validateFile] response.data keys:", response.data ? Object.keys(response.data) : 'no data')
+      
+      if (response.error) {
+        const errorMsg = response.error || "Error desconocido"
+        console.error("[validateFile] Error en respuesta:", errorMsg)
+        toast.error("Error al validar", {
+          description: errorMsg
+        })
+        setStep("upload")
+        return
+      }
+      
+      if (response.data) {
+        // ✅ CORRECCIÓN: El backend puede retornar dos estructuras diferentes:
+        // 1. Estructura completa: { file_info: {rows, columns}, column_validation: {...}, ... }
+        // 2. Estructura simplificada: { total_rows, valid_rows, column_mapping: {...}, preview: [...] }
+        const backendData = response.data
+        
+        console.log("🔍 [VALIDATE] Backend response structure:", {
+          responseKeys: Object.keys(response),
+          responseDataKeys: Object.keys(backendData || {}),
+          hasFileInfo: !!backendData?.file_info,
+          hasTotalRows: !!backendData?.total_rows,
+          fileInfo: backendData?.file_info,
+          totalRows: backendData?.total_rows,
+          columnMapping: backendData?.column_mapping,
+          preview: backendData?.preview,
+          fullBackendData: JSON.stringify(backendData, null, 2).substring(0, 2000)
+        })
+        
+        // ✅ MAPEO ADAPTATIVO: Manejar ambas estructuras
+        // Si tiene file_info, usar estructura completa; si no, construir desde estructura simplificada
+        // El backend puede retornar estructura completa O estructura simplificada dependiendo del endpoint
+        const hasFullStructure = !!backendData?.file_info && !!backendData?.column_validation
+        
+        console.log("🔧 [VALIDATE] Structure detection:", {
+          hasFileInfo: !!backendData?.file_info,
+          hasColumnValidation: !!backendData?.column_validation,
+          hasTotalRows: !!backendData?.total_rows,
+          hasPreview: !!backendData?.preview,
+          hasPreviewData: !!backendData?.preview_data,
+          hasColumnMapping: !!backendData?.column_mapping,
+          detectedStructure: hasFullStructure ? 'full' : 'simplified'
+        })
+        
+        let fileInfoRows = 0
+        let fileInfoColumns = 0
+        let fileColumns: string[] = []
+        let columnMapping: ColumnMapping[] = []
+        let previewData: any[] = []
+        
+        if (hasFullStructure) {
+          // Estructura completa del backend
+          fileInfoRows = Number(backendData?.file_info?.rows) || 0
+          fileInfoColumns = Number(backendData?.file_info?.columns) || 0
+          fileColumns = Array.isArray(backendData?.column_validation?.file_columns) 
+            ? backendData.column_validation.file_columns 
+            : []
+          columnMapping = Array.isArray(backendData?.column_validation?.column_mapping)
+            ? backendData.column_validation.column_mapping
+            : []
+          previewData = Array.isArray(backendData?.preview_data)
+            ? backendData.preview_data
+            : []
+        } else {
+          // Estructura simplificada - construir desde total_rows, column_mapping, preview
+          fileInfoRows = Number(backendData?.total_rows) || 0
+          fileInfoColumns = backendData?.column_mapping ? Object.keys(backendData.column_mapping).length : 0
+          
+          // Extraer file_columns desde column_mapping (valores mapeados)
+          if (backendData?.column_mapping && typeof backendData.column_mapping === 'object') {
+            fileColumns = Object.values(backendData.column_mapping) as string[]
+            
+            // Construir column_mapping desde column_mapping object
+            columnMapping = Object.entries(backendData.column_mapping).map(([original, mapped]) => ({
+              column_name: mapped as string,
+              original_name: original,
+              status: "required" as const,
+              message: `Mapeado desde "${original}"`,
+              can_remove: false
+            }))
+          } else {
+            fileColumns = []
+            columnMapping = []
+          }
+          
+          // Usar 'preview' si existe, si no usar 'preview_data'
+          previewData = Array.isArray(backendData?.preview) 
+            ? backendData.preview 
+            : (Array.isArray(backendData?.preview_data) ? backendData.preview_data : [])
+        }
+        
+        console.log("🔧 [VALIDATE] Extracted values:", {
+          hasFullStructure,
+          fileInfoRows,
+          fileInfoColumns,
+          fileColumnsCount: fileColumns.length,
+          columnMappingCount: columnMapping.length,
+          previewDataCount: previewData.length
+        })
+        
+        // ✅ MAPEO COMPLETO Y CORRECTO de todos los campos
+        const validationData: ValidationResult = {
+          success: backendData?.success === true || backendData?.valid_for_import === true,
+          valid_for_import: backendData?.valid_for_import === true,
+          file_info: {
+            rows: fileInfoRows,
+            columns: fileInfoColumns,
+            file_type: backendData?.file_info?.file_type || (file.name.endsWith('.csv') ? 'csv' : 'xlsx')
+          },
+          column_validation: {
+            valid: hasFullStructure 
+              ? (backendData?.column_validation?.valid === true)
+              : (backendData?.valid_for_import === true),
+            file_columns: fileColumns,
+            original_columns: hasFullStructure
+              ? (Array.isArray(backendData?.column_validation?.original_columns)
+                  ? backendData.column_validation.original_columns
+                  : [])
+              : (backendData?.column_mapping ? Object.keys(backendData.column_mapping) : []),
+            applied_mappings: hasFullStructure
+              ? (backendData?.column_validation?.applied_mappings || {})
+              : (backendData?.column_mapping || {}),
+            required_columns: hasFullStructure
+              ? (Array.isArray(backendData?.column_validation?.required_columns)
+                  ? backendData.column_validation.required_columns
+                  : [])
+              : [],
+            optional_columns: hasFullStructure
+              ? (Array.isArray(backendData?.column_validation?.optional_columns)
+                  ? backendData.column_validation.optional_columns
+                  : [])
+              : [],
+            missing_required: hasFullStructure
+              ? (Array.isArray(backendData?.column_validation?.missing_required)
+                  ? backendData.column_validation.missing_required
+                  : [])
+              : [],
+            unknown_columns: hasFullStructure
+              ? (Array.isArray(backendData?.column_validation?.unknown_columns)
+                  ? backendData.column_validation.unknown_columns
+                  : [])
+              : [],
+            column_mapping: columnMapping
+          },
+          data_validation: {
+            critical_errors: hasFullStructure
+              ? (Array.isArray(backendData?.data_validation?.critical_errors)
+                  ? backendData.data_validation.critical_errors
+                  : [])
+              : (Array.isArray(backendData?.errors)
+                  ? backendData.errors.map((e: any) => ({
+                      message: e.error || e.message || "Error de validación",
+                      affected_rows: [e.row || 0],
+                      total_affected: 1
+                    }))
+                  : []),
+            warnings: hasFullStructure
+              ? (Array.isArray(backendData?.data_validation?.warnings)
+                  ? backendData.data_validation.warnings
+                  : [])
+              : [],
+            total_errors: hasFullStructure
+              ? (Number(backendData?.data_validation?.total_errors) || 0)
+              : (Number(backendData?.invalid_rows) || 0)
+          },
+          duplicate_check: {
+            has_duplicates: hasFullStructure
+              ? (backendData?.duplicate_check?.has_duplicates === true)
+              : false,
+            duplicate_rows: hasFullStructure
+              ? (Array.isArray(backendData?.duplicate_check?.duplicate_rows)
+                  ? backendData.duplicate_check.duplicate_rows
+                  : [])
+              : []
+          },
+          duplicate_file_check: backendData?.duplicate_file_check || undefined,
+          duplicate_sku_check: backendData?.duplicate_sku_check || undefined,
+          preview_data: previewData,
+          recommendations: Array.isArray(backendData?.recommendations)
+            ? backendData.recommendations
+            : [],
+          schema: backendData?.schema || {
+            required_columns: [],
+            optional_columns: [],
+            column_definitions: {}
+          }
+        }
+        
+        console.log("✅ [VALIDATE] Mapped validation data:", {
+          success: validationData.success,
+          valid_for_import: validationData.valid_for_import,
+          file_info_rows: validationData.file_info.rows,
+          file_info_columns: validationData.file_info.columns,
+          column_validation_valid: validationData.column_validation.valid,
+          file_columns_count: validationData.column_validation.file_columns.length,
+          preview_data_count: validationData.preview_data.length
+        })
+        
+        console.log("[validateFile] Datos de validación mapeados:", validationData)
+        console.log("🔧 [VALIDATE] Setting validation result - rows:", validationData.file_info.rows, "columns:", validationData.file_info.columns)
+        setValidationResult(validationData)
+        setStep("review")
+        console.log("🔧 [VALIDATE] State updated, step changed to 'review'")
+        
+        if (validationData.valid_for_import) {
+          toast.success("Validación exitosa", {
+            description: `Archivo válido para importación`
+          })
+        } else {
+          toast.warning("Errores detectados", {
+            description: `Revisa los detalles antes de continuar`
+          })
+        }
+      }
+    } catch (error: unknown) {
+      console.error("[validateFile] Error en catch:", error)
+      const errorMessage = error instanceof Error ? error.message : "Error de conexión"
+      toast.error("Error al validar el archivo", {
+        description: errorMessage
+      })
+      setStep("upload")
+    } finally {
+      setIsValidating(false)
+    }
+  }, [])
+
+  // ✅ OPTIMIZED: Memoized validation handler
+  const handleValidate = useCallback(() => {
     if (selectedFile) {
       validateFile(selectedFile)
     }
-  }
+  }, [selectedFile, validateFile])
 
-  // Handle file selection
-  const handleFileSelect = (file: File) => {
+  // ✅ OPTIMIZED: Memoized file selection handler
+  const handleFileSelect = useCallback((file: File) => {
     const validTypes = [
       'text/csv',
       'application/vnd.ms-excel',
@@ -150,9 +470,9 @@ export default function InventoryImportWizard({ isOpen, onClose, onImportComplet
     setSelectedFile(file)
     setStep("validate")
     validateFile(file)
-  }
+  }, [validateFile])
 
-  // Handle drag and drop
+  // ✅ OPTIMIZED: Memoized drag and drop handlers
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     setIsDragging(false)
@@ -161,7 +481,7 @@ export default function InventoryImportWizard({ isOpen, onClose, onImportComplet
     if (files.length > 0) {
       handleFileSelect(files[0])
     }
-  }, [])
+  }, [handleFileSelect])
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -173,147 +493,124 @@ export default function InventoryImportWizard({ isOpen, onClose, onImportComplet
     setIsDragging(false)
   }, [])
 
-  // Validate file (dry-run mode)
-  const validateFile = async (file: File) => {
-    setIsValidating(true)
-    
-    try {
-      const response = await apiClient.validateImport(file)
-      
-      if (response.error) {
-        toast.error("Error al validar", {
-          description: response.error.message || "Error desconocido"
-        })
-        setStep("upload")
-        return
-      }
-      
-      if (response.data) {
-        // Map response to ValidationResult format
-        const validationData: ValidationResult = {
-          success: response.data.valid_for_import || false,
-          valid_for_import: response.data.valid_for_import || false,
-          file_info: {
-            rows: response.data.total_rows || 0,
-            columns: Object.keys(response.data.column_mapping || {}).length,
-            file_type: file.name.endsWith('.csv') ? 'csv' : 'xlsx'
-          },
-          column_validation: {
-            valid: response.data.valid_for_import || false,
-            file_columns: Object.keys(response.data.column_mapping || {}),
-            column_mapping: Object.entries(response.data.column_mapping || {}).map(([key, value]) => ({
-              column_name: key,
-              original_name: key,
-              status: "required" as const,
-              message: `Mapeado a ${value}`,
-              can_remove: false
-            })),
-            required_columns: ['sku', 'name'],
-            optional_columns: [],
-            missing_required: [],
-            unknown_columns: []
-          },
-          data_validation: {
-            critical_errors: (response.data.errors || []).filter((e: any) => e.error && !e.error.includes('warning')).map((e: any) => ({
-              message: `${e.field ? `Campo "${e.field}": ` : ''}${e.error || e.message || "Error de validación"}${e.value ? ` (valor: ${e.value})` : ''}`,
-              affected_rows: [e.row || e.line || 0],
-              total_affected: 1
-            })),
-            warnings: (response.data.errors || []).filter((e: any) => e.error && e.error.includes('warning')).map((e: any) => ({
-              message: `${e.field ? `Campo "${e.field}": ` : ''}${e.error || e.message || "Advertencia"}${e.value ? ` (valor: ${e.value})` : ''}`,
-              affected_rows: [e.row || e.line || 0],
-              total_affected: 1
-            })),
-            total_errors: response.data.invalid_rows || 0
-          },
-          duplicate_check: {
-            has_duplicates: false,
-            duplicate_rows: []
-          },
-          preview_data: response.data.preview || [],
-          recommendations: [],
-          schema: {
-            required_columns: ['sku', 'name'],
-            optional_columns: [],
-            column_definitions: {}
-          }
-        }
-        
-        setValidationResult(validationData)
-        setStep("review")
-        
-        if (response.data.valid_for_import) {
-          toast.success("Validación exitosa", {
-            description: `${response.data.valid_rows} filas válidas de ${response.data.total_rows} totales`
-          })
-        } else {
-          toast.warning("Errores detectados", {
-            description: `${response.data.invalid_rows} filas con errores. Revisa los detalles antes de continuar`
-          })
-        }
-      }
-    } catch (error: any) {
-      console.error("Validation error:", error)
-      toast.error("Error al validar el archivo", {
-        description: error.message || "Error de conexión"
-      })
-      setStep("upload")
-    } finally {
-      setIsValidating(false)
-    }
-  }
 
   const [importOnlyValid, setImportOnlyValid] = useState(false)
 
-  // Handle import
-  const handleImport = async () => {
+  // ✅ CORRECCIÓN COMPLETA: handleImport con fetch directo y mejor debugging
+  const handleImport = useCallback(async () => {
     if (!selectedFile || !validationResult) return
     
     setIsImporting(true)
     setStep("import")
     
     try {
-      const response = await apiClient.importInventory(selectedFile, importOnlyValid)
+      console.log("🚀 [IMPORT] Starting import process...")
+      console.log("🚀 [IMPORT] File:", selectedFile.name, "Size:", selectedFile.size)
+      console.log("🚀 [IMPORT] Options:", { import_only_valid: importOnlyValid, update_existing: true })
       
-      if (response.error) {
-        toast.error("Error en la importación", {
-          description: response.error.message || "Error desconocido"
-        })
-        setStep("review")
-        return
+      // ✅ CORRECCIÓN: Usar FormData correctamente con fetch directo
+      const formData = new FormData()
+      formData.append('file', selectedFile)
+      formData.append('update_existing', 'true')
+      formData.append('dry_run', 'false')
+      formData.append('import_only_valid', importOnlyValid.toString())
+      
+      const token = localStorage.getItem('gde_token')
+      // ✅ CORRECCIÓN: El router está en /api/v1/inventory/import y el endpoint es /import
+      // Entonces la URL completa es /api/v1/inventory/import/import
+      // Pero el proxy de Next.js reescribe /api/* a http://backend/api/v1/*
+      // Entonces desde el frontend usamos: /api/inventory/import/import
+      const apiBaseUrl = '/api'
+      const url = `${apiBaseUrl}/inventory/import/import`
+      
+      console.log("🚀 [IMPORT] URL:", url)
+      console.log("🚀 [IMPORT] Has token:", !!token)
+      console.log("🚀 [IMPORT] FormData entries:")
+      for (const [key, value] of formData.entries()) {
+        console.log(`  ${key}:`, value instanceof File ? `${value.name} (${value.size} bytes)` : value)
       }
       
-      if (response.data) {
-        setImportResult(response.data)
-        setStep("complete")
-        
-        toast.success("Importación exitosa", {
-          description: `${response.data.successful || 0} productos procesados exitosamente`
-        })
-        
-        if (onImportComplete) {
-          onImportComplete()
+      const response = await fetch(url, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          ...(token && { 'Authorization': `Bearer ${token}` })
         }
-      }
-    } catch (error: any) {
-      console.error("Import error:", error)
-      toast.error("Error al importar", {
-        description: error.message || "Error desconocido"
       })
+      
+      console.log("🔍 [IMPORT] Response status:", response.status)
+      console.log("🔍 [IMPORT] Response headers:", Object.fromEntries(response.headers.entries()))
+      
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error("❌ [IMPORT] HTTP error response:", errorText)
+        throw new Error(`HTTP error! status: ${response.status}, body: ${errorText}`)
+      }
+      
+      const result = await response.json()
+      console.log("🔍 [IMPORT] Response data:", result)
+      console.log("🔍 [IMPORT] Response status field:", result.status)
+      console.log("🔍 [IMPORT] Response success field:", result.success)
+      
+      // ✅ CORRECCIÓN: Manejar diferentes formatos de error
+      if (result.status === 'error' || result.success === false) {
+        const errorMessage = result.message || result.error || "Error en la importación"
+        console.error("❌ [IMPORT] Backend returned error:", errorMessage)
+        throw new Error(errorMessage)
+      }
+      
+      if (result.error) {
+        throw new Error(result.error)
+      }
+      
+      // ✅ CORRECCIÓN: Manejar diferentes estructuras de respuesta
+      setImportResult(result)
+      setStep("complete")
+      
+      // Mostrar resultados
+      const successful = result.results?.successful_rows || result.successful || result.data?.successful_rows || 0
+      const inserts = result.results?.inserts || result.data?.inserts || 0
+      const updates = result.results?.updates || result.data?.updates || 0
+      
+      console.log("✅ [IMPORT] Importación exitosa:", { successful, inserts, updates })
+      
+      toast.success("Importación exitosa", {
+        description: `${successful} productos procesados (${inserts} nuevos, ${updates} actualizados)`
+      })
+      
+      if (onImportComplete) {
+        onImportComplete()
+      }
+      
+    } catch (error: any) {
+      console.error("❌ [IMPORT] Error:", error)
+      
+      let errorMessage = "Error desconocido"
+      if (error.message) {
+        errorMessage = error.message
+      } else if (typeof error === 'string') {
+        errorMessage = error
+      }
+      
+      toast.error("Error en la importación", {
+        description: errorMessage
+      })
+      
       setStep("review")
     } finally {
       setIsImporting(false)
     }
-  }
+  }, [selectedFile, validationResult, importOnlyValid, onImportComplete])
 
-  // Download template
-  const handleDownloadTemplate = async (format: 'xlsx' | 'csv') => {
+  // ✅ OPTIMIZED: Memoized download template handler
+  const handleDownloadTemplate = useCallback(async (format: 'xlsx' | 'csv') => {
     try {
       // Use fetch directly to download the blob
       const token = localStorage.getItem('gde_token')
-      const apiBaseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'
+      // ✅ CORRECCIÓN: Usar /api directamente (el proxy de Next.js ya agrega /v1)
+      const apiBaseUrl = '/api'
       const response = await fetch(
-        `${apiBaseUrl}/api/v1/inventory/import/template/download?format=${format}`,
+        `${apiBaseUrl}/inventory/import/template/download?format=${format}`,
         {
           method: 'GET',
           headers: {
@@ -342,19 +639,19 @@ export default function InventoryImportWizard({ isOpen, onClose, onImportComplet
       console.error("Download error:", error)
       toast.error("Error al descargar la plantilla")
     }
-  }
+  }, [])
 
-  // Reset wizard
-  const handleReset = () => {
+  // ✅ OPTIMIZED: Memoized reset handler
+  const handleReset = useCallback(() => {
     setStep("upload")
     setSelectedFile(null)
     setValidationResult(null)
     setImportResult(null)
     setColumnsToRemove([])
-  }
+  }, [])
 
-  // Render severity icon
-  const getSeverityIcon = (severity: string) => {
+  // ✅ OPTIMIZED: Memoized icon renderer
+  const getSeverityIcon = useCallback((severity: string) => {
     switch (severity) {
       case "critical":
         return <XCircle className="h-5 w-5 text-destructive" />
@@ -365,10 +662,10 @@ export default function InventoryImportWizard({ isOpen, onClose, onImportComplet
       default:
         return <Info className="h-5 w-5 text-blue-500" />
     }
-  }
+  }, [])
 
-  // Render status badge
-  const getStatusBadge = (status: string) => {
+  // ✅ OPTIMIZED: Memoized badge renderer
+  const getStatusBadge = useCallback((status: string) => {
     const variants: Record<string, { variant: "destructive" | "secondary" | "outline", label: string }> = {
       required: { variant: "destructive", label: "Requerida" },
       optional: { variant: "secondary", label: "Opcional" },
@@ -378,7 +675,7 @@ export default function InventoryImportWizard({ isOpen, onClose, onImportComplet
     
     const config = variants[status] || { variant: "outline" as const, label: status }
     return <Badge variant={config.variant}>{config.label}</Badge>
-  }
+  }, [])
 
   return (
     <div className="flex flex-col h-full">
@@ -504,6 +801,11 @@ export default function InventoryImportWizard({ isOpen, onClose, onImportComplet
             </Card>
           )}
 
+          {/* ✅ Panel de Diagnóstico - Solo visible en step upload */}
+          {step === "upload" && (
+            <DebugPanel />
+          )}
+
           {/* Step: Validating */}
           {step === "validate" && (
             <Card>
@@ -550,7 +852,7 @@ export default function InventoryImportWizard({ isOpen, onClose, onImportComplet
                     </div>
                     <div className="text-center">
                       <div className="text-2xl font-bold text-green-600">
-                        {validationResult.column_validation?.valid_columns || 0}
+                        {validationResult.column_validation?.file_columns?.length || 0}
                       </div>
                       <div className="text-sm text-muted-foreground">Columnas Válidas</div>
                     </div>
@@ -609,6 +911,27 @@ export default function InventoryImportWizard({ isOpen, onClose, onImportComplet
                           </div>
                         </Alert>
                       ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* ✅ CORRECCIÓN: Panel de Debug */}
+              {step === "review" && validationResult && (
+                <Card className="border-orange-200 bg-orange-50">
+                  <CardHeader>
+                    <CardTitle className="text-sm text-orange-800">🔍 Debug Info</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-xs space-y-1">
+                      <div><strong>Archivo:</strong> {selectedFile?.name}</div>
+                      <div><strong>Filas:</strong> {validationResult.file_info?.rows}</div>
+                      <div><strong>Columnas:</strong> {validationResult.file_info?.columns}</div>
+                      <div><strong>Válido para importar:</strong> {validationResult.valid_for_import ? '✅ Sí' : '❌ No'}</div>
+                      <div><strong>Errores críticos:</strong> {validationResult.data_validation?.total_errors || 0}</div>
+                      <div><strong>Columnas requeridas faltantes:</strong> {validationResult.column_validation?.missing_required?.join(', ') || 'Ninguna'}</div>
+                      <div><strong>Columnas desconocidas:</strong> {validationResult.column_validation?.unknown_columns?.join(', ') || 'Ninguna'}</div>
+                      <div><strong>Duplicados en archivo:</strong> {validationResult.duplicate_check?.has_duplicates ? 'Sí' : 'No'}</div>
                     </div>
                   </CardContent>
                 </Card>
@@ -704,27 +1027,33 @@ export default function InventoryImportWizard({ isOpen, onClose, onImportComplet
                       </ScrollArea>
                     </TabsContent>
 
-                    {/* Errors Tab */}
+                    {/* Errors Tab - ✅ CORRECCIÓN: Mejor visualización de errores */}
                     <TabsContent value="errors" className="space-y-4">
                       <ScrollArea className="h-[300px] sm:h-[400px] border rounded-md">
                         <div className="space-y-3 p-4">
+                          {/* Errores críticos */}
                           {validationResult.data_validation?.critical_errors && validationResult.data_validation.critical_errors.length > 0 ? (
-                            validationResult.data_validation.critical_errors.map((error, index) => (
-                              <Alert key={`error-${index}`} variant="destructive">
-                                <XCircle className="h-4 w-4" />
-                                <AlertTitle className="font-medium">
-                                  Fila {error.affected_rows?.[0] || index + 1}: {error.message}
-                                </AlertTitle>
-                                <AlertDescription className="text-sm">
-                                  {error.affected_rows && error.affected_rows.length > 1 && (
-                                    <p className="text-xs mt-1">También afecta a las filas: {error.affected_rows.slice(1).join(", ")}</p>
+                            <>
+                              <div className="text-sm font-medium text-destructive mb-2">
+                                Errores Críticos ({validationResult.data_validation.critical_errors.length})
+                              </div>
+                              {validationResult.data_validation.critical_errors.map((error, index) => (
+                                <Alert key={`error-${index}`} variant="destructive">
+                                  <XCircle className="h-4 w-4" />
+                                  <AlertTitle className="font-medium">
+                                    {error.message}
+                                  </AlertTitle>
+                                  {error.affected_rows && error.affected_rows.length > 0 && (
+                                    <AlertDescription className="text-sm">
+                                      Filas afectadas: {error.affected_rows.join(', ')}
+                                      {error.total_affected && error.total_affected > error.affected_rows.length && 
+                                        ` (y ${error.total_affected - error.affected_rows.length} más)`
+                                      }
+                                    </AlertDescription>
                                   )}
-                                  {error.total_affected && error.total_affected > 10 && (
-                                    <p className="text-xs mt-1">...y {error.total_affected - 10} filas más</p>
-                                  )}
-                                </AlertDescription>
-                              </Alert>
-                            ))
+                                </Alert>
+                              ))}
+                            </>
                           ) : (
                             <div className="text-center py-8 text-muted-foreground">
                               <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-green-500" />
@@ -732,20 +1061,26 @@ export default function InventoryImportWizard({ isOpen, onClose, onImportComplet
                             </div>
                           )}
                           
+                          {/* Advertencias */}
                           {validationResult.data_validation?.warnings && validationResult.data_validation.warnings.length > 0 && (
                             <>
-                              <div className="text-sm font-medium mt-4 mb-2">Advertencias:</div>
+                              <div className="text-sm font-medium text-yellow-600 mt-4 mb-2">
+                                Advertencias ({validationResult.data_validation.warnings.length})
+                              </div>
                               {validationResult.data_validation.warnings.map((warning, index) => (
-                                <Alert key={`warning-${index}`}>
-                                  <AlertTriangle className="h-4 w-4" />
-                                  <AlertTitle className="font-medium">
-                                    Fila {warning.affected_rows?.[0] || index + 1}: {warning.message}
+                                <Alert key={`warning-${index}`} variant="default" className="border-yellow-200 bg-yellow-50">
+                                  <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                                  <AlertTitle className="font-medium text-yellow-800">
+                                    {warning.message}
                                   </AlertTitle>
-                                  <AlertDescription className="text-sm">
-                                    {warning.affected_rows && warning.affected_rows.length > 1 && (
-                                      <p className="text-xs mt-1">También afecta a las filas: {warning.affected_rows.slice(1).join(", ")}</p>
-                                    )}
-                                  </AlertDescription>
+                                  {warning.affected_rows && warning.affected_rows.length > 0 && (
+                                    <AlertDescription className="text-sm text-yellow-700">
+                                      Filas afectadas: {warning.affected_rows.join(', ')}
+                                      {warning.total_affected && warning.total_affected > warning.affected_rows.length && 
+                                        ` (y ${warning.total_affected - warning.affected_rows.length} más)`
+                                      }
+                                    </AlertDescription>
+                                  )}
                                 </Alert>
                               ))}
                             </>
@@ -920,7 +1255,7 @@ export default function InventoryImportWizard({ isOpen, onClose, onImportComplet
                 )}
                 <Button
                   onClick={handleImport}
-                  disabled={isImporting || (!validationResult.valid_for_import && !importOnlyValid)}
+                  disabled={isImporting || !(validationResult.valid_for_import || (importOnlyValid && validationResult.file_info?.rows > 0))}
                   className="flex items-center gap-2"
                 >
                   {isImporting ? (
@@ -948,3 +1283,6 @@ export default function InventoryImportWizard({ isOpen, onClose, onImportComplet
     </div>
   )
 }
+
+// ✅ OPTIMIZED: Export memoized component
+export default memo(InventoryImportWizard)
